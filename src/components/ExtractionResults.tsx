@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
+import DOMPurify from "isomorphic-dompurify";
 
 interface ExtractionResultsProps {
   data: any;
@@ -80,9 +81,9 @@ export default function ExtractionResults({ data }: ExtractionResultsProps) {
         ) : (
           <div className="overflow-x-auto border rounded-lg max-h-[600px]">
             {tables[activeTab]?.raw_html ? (
-              <div 
-                className="p-4 prose max-w-none" 
-                dangerouslySetInnerHTML={{ __html: tables[activeTab].raw_html }} 
+              <div
+                className="p-4 prose max-w-none"
+                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(tables[activeTab].raw_html) }}
               />
             ) : (
               <div className="p-8 text-center text-gray-500">
