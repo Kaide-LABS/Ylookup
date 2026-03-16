@@ -29,9 +29,6 @@ export default function Home() {
   const [auditActions, setAuditActions] = useState<ReviewAction[]>([]);
   const [activeTableIndex, setActiveTableIndex] = useState(0);
 
-  // Demo Auto-Advance Toggle
-  const [autoAdvance, setAutoAdvance] = useState(true);
-
   // Determine current pipeline phase
   const currentPhase = auditedData ? "complete" :
                        (isAuditing || (normalizedData && !isNormalizing)) ? "audit" :
@@ -119,22 +116,6 @@ export default function Home() {
     }
   };
 
-  // Auto-advance logic
-  useEffect(() => {
-    if (autoAdvance) {
-      if (results && !normalizedData && !isNormalizing && !error) {
-        const timer = setTimeout(() => handleNormalize(results.tables), 1500);
-        return () => clearTimeout(timer);
-      }
-
-      if (normalizedData && !auditedData && !isAuditing && !error) {
-        const timer = setTimeout(() => handleAudit(normalizedData.normalized_tables), 1500);
-        return () => clearTimeout(timer);
-      }
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [results, normalizedData, auditedData, isNormalizing, isAuditing, error, autoAdvance]);
-
   const handleReviewAction = (action: ReviewAction) => {
     addAction(action);
     setAuditActions(getActions());
@@ -173,14 +154,6 @@ export default function Home() {
           <p className="mt-1 text-sm text-green-400/70 font-medium tracking-wide">
             powered by Ylookup
           </p>
-
-          <button
-             onClick={() => setAutoAdvance(!autoAdvance)}
-             className={`mt-4 inline-flex items-center gap-2 text-xs font-bold px-3 py-1.5 rounded-full border transition-colors ${autoAdvance ? 'bg-green-500/10 text-green-400 border-green-500/30' : 'bg-yl-card text-gray-500 border-yl-border'}`}
-          >
-             <RefreshCw className={`w-3 h-3 ${autoAdvance ? 'animate-spin-slow' : ''}`} />
-             Auto-Advance Demo Mode: {autoAdvance ? "ON" : "OFF"}
-          </button>
         </div>
 
         {/* Error State */}
@@ -234,7 +207,7 @@ export default function Home() {
                 &larr; Start New Document
               </button>
 
-              {!normalizedData && !isNormalizing && !autoAdvance && (
+              {!normalizedData && !isNormalizing && (
                 <button
                   onClick={() => handleNormalize(results.tables)}
                   className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-bold rounded-md shadow-sm text-white bg-green-600 hover:bg-green-500 transition-colors"
@@ -257,7 +230,7 @@ export default function Home() {
             {normalizedData && (
               <motion.div initial="hidden" animate="visible" variants={fadeUpVariant} viewport={{ once: true }}>
                 <div className="flex justify-end mb-4">
-                  {!auditedData && !isAuditing && !autoAdvance && (
+                  {!auditedData && !isAuditing && (
                     <button
                       onClick={() => handleAudit(normalizedData.normalized_tables)}
                       className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-bold rounded-md shadow-sm text-white bg-green-600 hover:bg-green-500 transition-colors"
