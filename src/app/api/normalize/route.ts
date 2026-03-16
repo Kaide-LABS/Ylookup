@@ -79,7 +79,7 @@ export async function POST(request: Request) {
           },
         });
 
-        const mappingResultText = response.text() || "{}";
+        const mappingResultText = response.text || "{}";
         const resultJson = JSON.parse(mappingResultText);
         const mappings = resultJson.mappings || [];
 

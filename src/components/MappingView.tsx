@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ArrowRight, CheckCircle2, AlertCircle, XCircle } from "lucide-react";
 import { motion } from "framer-motion";
+import DOMPurify from "isomorphic-dompurify";
 
 interface Mapping {
   original_term: string;
@@ -153,8 +154,8 @@ export default function MappingView({ normalizedTables, onOverride }: MappingVie
         <div className="overflow-x-auto border rounded-lg max-h-[600px] bg-white">
           <div 
             className="p-4 prose max-w-none" 
-            dangerouslySetInnerHTML={{ 
-              __html: viewMode === "original" ? activeTable?.raw_html || "" : activeTable?.normalized_html || "" 
+            dangerouslySetInnerHTML={{
+              __html: DOMPurify.sanitize(viewMode === "original" ? activeTable?.raw_html || "" : activeTable?.normalized_html || "")
             }} 
           />
         </div>
