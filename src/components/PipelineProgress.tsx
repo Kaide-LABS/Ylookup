@@ -33,59 +33,65 @@ export default function PipelineProgress({ currentPhase }: PipelineProgressProps
   };
 
   return (
-    <div className="w-full max-w-4xl mx-auto mb-12">
-      <div className="relative flex items-center justify-between">
+    <div className="w-full max-w-3xl mx-auto mb-10">
+      {/* Icon row with lines */}
+      <div className="relative flex items-center justify-between h-12">
+        {/* Background line */}
+        <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-0.5 bg-yl-border-light"></div>
 
-        {/* Connecting Lines Background */}
-        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-1 bg-yl-border rounded-full z-0"></div>
-
-        {/* Animated Connecting Line Foreground */}
+        {/* Active line */}
         <motion.div
-          className="absolute left-0 top-1/2 -translate-y-1/2 h-1 bg-green-500 rounded-full z-0"
+          className="absolute left-0 top-1/2 -translate-y-1/2 h-0.5 bg-green-500"
           initial={{ width: "0%" }}
           animate={{
-            width: currentPhase === "extract" ? "15%" :
+            width: currentPhase === "extract" ? "10%" :
                    currentPhase === "normalize" ? "50%" :
-                   currentPhase === "audit" ? "85%" : "100%"
+                   currentPhase === "audit" ? "90%" : "100%"
           }}
           transition={{ duration: 0.5, ease: "easeInOut" }}
-        ></motion.div>
+        />
 
         {steps.map((step, index) => {
           const status = getStepStatus(step.id);
           const Icon = step.icon;
 
           return (
-            <div key={step.id} className="relative z-10 flex flex-col items-center">
+            <div key={step.id} className="relative z-10">
               <motion.div
                 initial={{ scale: 0.8, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 transition={{ delay: index * 0.1 }}
-                className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-sm border-2 transition-colors duration-300 bg-yl-card
+                className={`w-12 h-12 rounded-xl flex items-center justify-center border-2 transition-colors duration-300 bg-yl-card
                   ${status === "complete" ? "border-green-500 text-green-400" :
                     status === "active" ? "border-green-400 text-green-400 ring-4 ring-green-500/20" :
                     "border-yl-border text-gray-600"}
                 `}
               >
                 {status === "complete" ? (
-                  <CheckCircle2 className="w-6 h-6" />
+                  <CheckCircle2 className="w-5 h-5" />
                 ) : status === "active" ? (
-                  <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 3, ease: "linear" }}>
-                    <Loader2 className="w-6 h-6" />
-                  </motion.div>
+                  <Loader2 className="w-5 h-5 animate-spin" />
                 ) : (
-                  <Icon className="w-6 h-6" />
+                  <Icon className="w-5 h-5" />
                 )}
               </motion.div>
+            </div>
+          );
+        })}
+      </div>
 
-              <div className="mt-3 text-center">
-                <p className={`text-sm font-bold ${status === "active" ? "text-green-400" : status === "complete" ? "text-green-500" : "text-gray-600"}`}>
-                  Step {index + 1}
-                </p>
-                <p className={`text-xs font-medium mt-0.5 ${status === "active" ? "text-green-400/70" : status === "complete" ? "text-gray-400" : "text-gray-600"}`}>
-                  {step.label}
-                </p>
-              </div>
+      {/* Labels row */}
+      <div className="flex items-start justify-between mt-3">
+        {steps.map((step, index) => {
+          const status = getStepStatus(step.id);
+          return (
+            <div key={step.id} className="text-center w-12">
+              <p className={`text-xs font-bold ${status === "active" ? "text-green-400" : status === "complete" ? "text-green-500" : "text-gray-600"}`}>
+                Step {index + 1}
+              </p>
+              <p className={`text-[10px] font-medium mt-0.5 leading-tight ${status === "active" ? "text-green-400/70" : status === "complete" ? "text-gray-400" : "text-gray-600"}`}>
+                {step.label}
+              </p>
             </div>
           );
         })}

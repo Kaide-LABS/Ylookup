@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { motion } from "framer-motion";
+import { useEffect, useState, useRef } from "react";
 import { Loader2 } from "lucide-react";
 
 interface ProcessingStatusProps {
@@ -13,6 +12,16 @@ interface ProcessingStatusProps {
 
 export default function ProcessingStatus({ jobId, statusMessage, onComplete, onError }: ProcessingStatusProps) {
   const [statusText, setStatusText] = useState(statusMessage || "Extracting tables...");
+  const [elapsed, setElapsed] = useState(0);
+  const startTime = useRef(Date.now());
+
+  useEffect(() => {
+    startTime.current = Date.now();
+    const timer = setInterval(() => {
+      setElapsed((Date.now() - startTime.current) / 1000);
+    }, 100);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (statusMessage) {
@@ -56,15 +65,13 @@ export default function ProcessingStatus({ jobId, statusMessage, onComplete, onE
 
   return (
     <div className="w-full max-w-2xl mx-auto mt-10 text-center p-10 bg-yl-card rounded-xl shadow-sm border border-yl-border">
-      <motion.div
-        animate={{ rotate: 360 }}
-        transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
-        className="inline-block"
-      >
-        <Loader2 className="h-10 w-10 text-green-400 mb-4 mx-auto" />
-      </motion.div>
+      <div className="flex justify-center mb-4">
+        <Loader2 className="h-10 w-10 text-green-400 animate-spin" />
+      </div>
       <h3 className="text-lg font-medium text-white">{statusText}</h3>
-      <p className="text-sm text-gray-500 mt-2">This may take a moment depending on the document size.</p>
+      <p className="text-sm text-gray-500 mt-2">
+        Elapsed: {elapsed.toFixed(1)}s
+      </p>
     </div>
   );
 }

@@ -28,13 +28,10 @@ export default function ExtractionResults({ data }: ExtractionResultsProps) {
       <div className="flex justify-between items-center mb-6 border-b border-yl-border pb-4">
         <div>
           <h2 className="text-xl font-semibold text-white">Extraction Results</h2>
-          <div className="flex items-center space-x-3 mt-2 text-sm text-gray-400">
+          <div className="flex items-center mt-2">
             <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-500/10 text-green-400 border border-green-500/20">
               {docType}
             </span>
-            <span>Pages: {data.page_count}</span>
-            <span>Time: {(data.processing_time_ms / 1000).toFixed(2)}s</span>
-            <span>Tables: {tables.length}</span>
           </div>
         </div>
         <div className="flex space-x-2 bg-yl-bg p-1 rounded-lg border border-yl-border">
