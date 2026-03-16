@@ -5,7 +5,7 @@
 **Version:** 1.0
 **Date:** 2026-03-16
 **Author:** Claude (Architect) — for Gemini (Implementor)
-**Status:** Phase 3 Spec Ready
+**Status:** Phase 4 Spec Ready (Final Phase)
 
 ---
 
@@ -1001,21 +1001,422 @@ const result = JSON.parse(toolCall.function.arguments);
 
 ---
 
-## 8. Phase 4 Spec (Preview)
+## 8. Phase 4 Detailed Spec — Export + Demo Polish
 
-**Goal:** Export to Ylookup-ready format, polish UI for pitch.
+**Goal:** Add export to Ylookup-ready JSON/CSV, build a pipeline progress indicator that ties all 3 phases together visually, and polish the entire UI to be demo-ready for the Ylookup founders pitch.
 
-Files to create/modify:
-- `src/app/api/export/route.ts` — Generate JSON/CSV in Ylookup schema
-- `src/components/ExportPanel.tsx` — Download buttons + format preview
-- `src/components/PipelineProgress.tsx` — 3-phase animated progress (Extract -> Map -> Audit)
-- UI polish: animations, loading states, demo-ready styling
+### 8.1 No New Dependencies
 
-Acceptance criteria:
-- One-click export to JSON/CSV
-- Full pipeline progress indicator
-- Audit trail downloadable
-- Demo-ready for non-technical founders
+All required packages are already installed. This phase is purely frontend + one API route.
+
+### 8.2 Files to Create
+
+#### `src/app/api/export/route.ts`
+
+```typescript
+/**
+ * POST /api/export
+ *
+ * Generates downloadable JSON or CSV from the full pipeline output.
+ * This runs entirely server-side (no LLM calls) — pure data transformation.
+ *
+ * Request body:
+ * {
+ *   format: "json" | "csv",
+ *   audited_tables: Array<{
+ *     page: number,
+ *     table_index: number,
+ *     cell_scores: CellScore[],
+ *     summary: {...},
+ *     audited_html: string,
+ *     normalized_html: string,
+ *     mappings: Array<{ original_term, canonical_term, ... }>
+ *   }>,
+ *   audit_trail: ReviewAction[],     // From client-side audit-trail store
+ *   document_type: string,
+ *   metadata: { page_count, processing_time_ms }
+ * }
+ *
+ * Implementation:
+ * 1. For JSON format:
+ *    - Build a "Ylookup-ready" schema:
+ *      {
+ *        schema_version: "1.0",
+ *        document_type: string,
+ *        exported_at: ISO timestamp,
+ *        tables: [
+ *          {
+ *            page: number,
+ *            table_index: number,
+ *            headers: string[],           // Normalized canonical terms
+ *            rows: Array<{
+ *              [canonical_term]: {
+ *                value: string,
+ *                confidence: number,
+ *                flag: string,
+ *                reviewed: boolean,
+ *                review_action?: "accept" | "reject" | "edit",
+ *                original_value?: string   // If edited
+ *              }
+ *            }>,
+ *            field_mappings: Array<{ original, canonical, rationale }>,
+ *            summary: { average_confidence, flagged_count, cross_reference_issues }
+ *          }
+ *        ],
+ *        audit_trail: ReviewAction[],
+ *        metadata: { page_count, total_tables, total_cells, total_flagged, processing_time_ms }
+ *      }
+ *    - Parse normalized_html with cheerio to extract headers and row data
+ *    - Cross-reference cell_scores to attach confidence/flags to each cell
+ *    - Cross-reference audit_trail to mark reviewed cells
+ *    - Return as JSON response with Content-Disposition: attachment header
+ *
+ * 2. For CSV format:
+ *    - Flatten each table into CSV rows:
+ *      Page, Table, Row, [Header1], [Header2], ..., Confidence_Avg, Flags
+ *    - Append audit trail as a separate CSV section below, separated by blank row:
+ *      --- Audit Trail ---
+ *      Timestamp, Table, Row, Col, Action, Original_Value, New_Value, Note
+ *    - Return as text/csv with Content-Disposition: attachment header
+ *
+ * Response: Raw file content with appropriate Content-Type and Content-Disposition headers.
+ * The frontend triggers download by creating a Blob URL.
+ */
+```
+
+#### `src/components/ExportPanel.tsx`
+
+```typescript
+/**
+ * Export controls and preview panel.
+ *
+ * Props:
+ * {
+ *   auditedData: any,                  // Full audited_tables array
+ *   extractionResults: any,            // Phase 1 results (document_type, metadata)
+ *   auditActions: ReviewAction[],      // From audit-trail store
+ *   onExportStart?: () => void,
+ *   onExportComplete?: () => void
+ * }
+ *
+ * Layout:
+ * - Section header: "Export Results"
+ * - Summary stats row:
+ *   - Total tables processed
+ *   - Total cells extracted
+ *   - Average confidence across all tables
+ *   - Human reviews completed (from auditActions length)
+ *
+ * - Export format selector: two cards side by side
+ *   Card 1: "JSON (Ylookup Schema)" — icon FileJson from lucide-react
+ *     - Description: "Structured data ready for Ylookup ingestion"
+ *     - "Download JSON" button
+ *   Card 2: "CSV (Spreadsheet)" — icon FileSpreadsheet from lucide-react
+ *     - Description: "Flat format for Excel/Google Sheets review"
+ *     - "Download CSV" button
+ *
+ * - Audit Trail section (collapsible):
+ *   - "Download Audit Trail" button (separate JSON file)
+ *   - Preview: last 5 review actions shown as compact list
+ *     Each: "[Accept/Reject/Edit] Cell (R{row},C{col}) — {timestamp}"
+ *   - If no actions: "No human reviews recorded"
+ *
+ * Download implementation:
+ * - POST to /api/export with format and all data
+ * - Receive blob response
+ * - Create temporary <a> element with blob URL, trigger click, revoke URL
+ * - File names: "udina_export_{document_type}_{timestamp}.json" or ".csv"
+ * - Audit trail: "udina_audit_trail_{timestamp}.json"
+ *
+ * For audit trail download: use exportAuditTrail() from audit-trail.ts directly (no API call needed)
+ *
+ * Animations:
+ * - Framer Motion: cards have hover scale effect
+ * - Download button shows checkmark animation on complete
+ */
+```
+
+#### `src/components/PipelineProgress.tsx`
+
+```typescript
+/**
+ * Full pipeline progress indicator showing all 3 phases.
+ * Displayed at the top of the results area, always visible once extraction starts.
+ *
+ * Props:
+ * {
+ *   currentPhase: "extract" | "normalize" | "audit" | "complete",
+ *   extractionDone: boolean,
+ *   normalizationDone: boolean,
+ *   auditDone: boolean
+ * }
+ *
+ * Layout:
+ * - Horizontal 3-step progress bar:
+ *
+ *   [ 1. Extract ]  ——>  [ 2. Normalize ]  ——>  [ 3. Audit ]
+ *
+ * - Each step is a rounded pill/badge:
+ *   - Completed: green background, white checkmark icon, solid
+ *   - Active (in progress): indigo background, pulsing animation, spinner icon
+ *   - Pending: gray background, gray text, dashed border
+ *
+ * - Connecting lines between steps:
+ *   - Completed: solid green line
+ *   - Active: animated dashed line (CSS animation moving dashes)
+ *   - Pending: light gray dashed line
+ *
+ * - Below each step: small label text
+ *   - Step 1: "Table Extraction" / "Tables Extracted" (if done)
+ *   - Step 2: "GAAP Normalization" / "Fields Mapped" (if done)
+ *   - Step 3: "Confidence Audit" / "Cells Verified" (if done)
+ *
+ * - When all 3 complete: the entire bar turns green with a subtle
+ *   Framer Motion celebration animation (slight bounce + scale)
+ *
+ * Animations:
+ * - Framer Motion: steps animate in sequentially
+ * - Active step has a pulse/glow effect
+ * - Completion: checkmark animates in with spring physics
+ * - All-complete: bar does a subtle bounce
+ */
+```
+
+### 8.3 Files to Modify
+
+#### `src/app/page.tsx`
+
+```typescript
+/**
+ * Major updates for Phase 4:
+ *
+ * 1. Add PipelineProgress at the top of the results area:
+ *    - Determine currentPhase from state:
+ *      jobId set -> "extract"
+ *      isNormalizing -> "normalize"
+ *      isAuditing -> "audit"
+ *      auditedData set -> "complete"
+ *    - Show PipelineProgress once extraction starts (jobId is set)
+ *    - Keep it visible throughout the entire flow
+ *
+ * 2. Add ExportPanel at the bottom after audit completes:
+ *    - Pass auditedData, results (for metadata), auditActions
+ *    - Only show when auditedData is available
+ *
+ * 3. Auto-advance flow (OPTIONAL — for demo wow-factor):
+ *    - After extraction completes, automatically trigger normalization
+ *    - After normalization completes, automatically trigger audit
+ *    - This creates a seamless "watch the pipeline work" experience
+ *    - Add a state: autoAdvance (default true for demo)
+ *    - If autoAdvance, useEffect triggers next phase when previous completes
+ *    - User can still interrupt by clicking buttons manually
+ *
+ * 4. Layout improvements:
+ *    - Wrap all result sections in a smooth scroll container
+ *    - Each section animates in with Framer Motion (fade + slide up)
+ *    - Add section dividers between Extract/Normalize/Audit results
+ *
+ * Updated layout:
+ *   {(jobId || results) && <PipelineProgress ... />}
+ *
+ *   <ExtractionResults />
+ *   <MappingView />
+ *   <ConfidenceHeatmap />
+ *
+ *   {auditedData && <ExportPanel ... />}
+ *
+ *   <AnimatePresence>
+ *     {selectedCell && <ReviewPanel />}
+ *   </AnimatePresence>
+ */
+```
+
+#### `src/app/layout.tsx`
+
+```typescript
+/**
+ * Minor polish:
+ * - Add Inter font from next/font/google (or keep system font — whichever looks cleaner)
+ * - Add favicon (use a simple document/chart icon)
+ * - Update metadata description for demo context
+ */
+```
+
+#### `src/app/globals.css`
+
+```typescript
+/**
+ * Add these Tailwind utility styles for demo polish:
+ *
+ * - Custom scrollbar styling (thin, subtle)
+ * - Print-friendly styles (@media print) for the export preview
+ * - Smooth scroll behavior on html
+ * - Table styling defaults: borders, padding, alternating row colors
+ *   (so Marker's raw HTML tables look good without extra classes)
+ *
+ * Add to the @layer base or @layer components section:
+ *
+ * table { @apply w-full border-collapse text-sm; }
+ * th { @apply bg-gray-100 text-left font-semibold p-2 border border-gray-200; }
+ * td { @apply p-2 border border-gray-200; }
+ * tr:nth-child(even) td { @apply bg-gray-50; }
+ *
+ * This ensures ALL tables rendered from Marker HTML look consistent
+ * across ExtractionResults, MappingView, and ConfidenceHeatmap.
+ */
+```
+
+### 8.4 Data Flow
+
+```
+All pipeline data available (extraction + normalization + audit)
+  |
+  v
+ExportPanel shown with summary stats
+  |
+  v
+User clicks "Download JSON" or "Download CSV"
+  |
+  v
+POST /api/export { format, audited_tables, audit_trail, document_type, metadata }
+  |
+  v
+Server: cheerio parses tables, builds Ylookup schema, returns file blob
+  |
+  v
+Browser: creates Blob URL, triggers download, revokes URL
+
+User clicks "Download Audit Trail"
+  |
+  v
+Client-side: exportAuditTrail() -> Blob -> download (no API call)
+```
+
+### 8.5 Ylookup Export Schema (JSON)
+
+This is the target schema that Ylookup would ingest:
+
+```json
+{
+  "schema_version": "1.0",
+  "document_type": "10-K",
+  "exported_at": "2026-03-16T14:30:00.000Z",
+  "source": "UDINA v1.0",
+  "tables": [
+    {
+      "page": 1,
+      "table_index": 0,
+      "headers": ["Revenue", "Cost of Goods Sold", "Gross Profit"],
+      "rows": [
+        {
+          "Revenue": {
+            "value": "$31,536,000",
+            "confidence": 100,
+            "flag": "none",
+            "reviewed": false
+          },
+          "Cost of Goods Sold": {
+            "value": "$18,921,600",
+            "confidence": 82,
+            "flag": "low_confidence",
+            "reviewed": true,
+            "review_action": "accept"
+          }
+        }
+      ],
+      "field_mappings": [
+        { "original": "Gross Rev", "canonical": "Revenue", "rationale": "..." }
+      ],
+      "summary": {
+        "average_confidence": 94.2,
+        "flagged_count": 3,
+        "cross_reference_issues": []
+      }
+    }
+  ],
+  "audit_trail": [],
+  "metadata": {
+    "page_count": 12,
+    "total_tables": 3,
+    "total_cells": 156,
+    "total_flagged": 5,
+    "total_reviewed": 3,
+    "processing_time_ms": 45200
+  }
+}
+```
+
+### 8.6 Project Structure After Phase 4 (Final)
+
+```
+/Ylookup
+  /backend
+    main.py
+    extractor.py
+    requirements.txt
+    Dockerfile
+  /src
+    /app
+      page.tsx                      (MODIFIED — PipelineProgress, ExportPanel, auto-advance)
+      layout.tsx                    (MODIFIED — font, favicon, metadata)
+      globals.css                   (MODIFIED — table styles, scrollbar, print)
+      /api
+        /normalize
+          route.ts
+        /audit
+          route.ts
+        /export
+          route.ts                  (NEW)
+    /components
+      UploadZone.tsx
+      ExtractionResults.tsx
+      ProcessingStatus.tsx
+      MappingView.tsx
+      ConfidenceHeatmap.tsx
+      ReviewPanel.tsx
+      ExportPanel.tsx               (NEW)
+      PipelineProgress.tsx          (NEW)
+    /lib
+      gemini-client.ts
+      gaap-ontology.ts
+      openai-client.ts
+      audit-trail.ts
+  package.json
+  tsconfig.json
+  tailwind.config.ts
+  next.config.ts
+  docker-compose.yml
+  Dockerfile
+  PRD.md
+```
+
+### 8.7 Demo Polish Checklist
+
+These are specific visual/UX items to address for the pitch:
+
+- [ ] **Table styling** — All Marker HTML tables should look consistent (borders, padding, alternating rows) via global CSS
+- [ ] **No broken states** — Every loading/error/empty state has a designed UI (no raw error messages)
+- [ ] **Smooth transitions** — Each pipeline phase result section animates in (fade + slide up)
+- [ ] **PipelineProgress always visible** — Anchored at top of results, shows where you are in the pipeline
+- [ ] **Auto-advance** — Pipeline runs automatically after upload (extract -> normalize -> audit) unless interrupted
+- [ ] **Export is the finale** — After audit, ExportPanel appears as the clear call-to-action
+- [ ] **Responsive** — Works on laptop screen (1280px+), doesn't need mobile but shouldn't break
+- [ ] **Color consistency** — Indigo for actions, green for success, amber for warnings, red for errors throughout
+- [ ] **Professional typography** — Clean font, proper heading hierarchy, no orphaned text
+
+### 8.8 Acceptance Criteria
+
+- [ ] PipelineProgress shows 3-step indicator (Extract -> Normalize -> Audit) with correct active/complete states
+- [ ] Pipeline auto-advances through all 3 phases after upload (demo mode)
+- [ ] ExportPanel appears after audit with summary stats and download buttons
+- [ ] JSON export produces valid Ylookup schema with all table data, mappings, confidence scores, and audit trail
+- [ ] CSV export produces a flat spreadsheet-friendly format with audit trail appended
+- [ ] Audit trail downloadable as separate JSON file
+- [ ] Global table CSS makes all Marker HTML tables look consistent and professional
+- [ ] All transitions are smooth (Framer Motion fade/slide)
+- [ ] No broken/empty states — every state has designed UI
+- [ ] Full pipeline (upload -> extract -> normalize -> audit -> export) works end-to-end
+- [ ] Demo-ready for non-technical founders on a laptop screen
 
 ---
 
