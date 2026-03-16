@@ -17,7 +17,7 @@ export default function Home() {
   const [jobId, setJobId] = useState<string | null>(null);
   const [results, setResults] = useState<any | null>(null);
   const [error, setError] = useState<string | null>(null);
-  
+
   // Phase 2 State
   const [normalizedData, setNormalizedData] = useState<any | null>(null);
   const [isNormalizing, setIsNormalizing] = useState(false);
@@ -33,9 +33,9 @@ export default function Home() {
   const [autoAdvance, setAutoAdvance] = useState(true);
 
   // Determine current pipeline phase
-  const currentPhase = auditedData ? "complete" : 
-                       (isAuditing || (normalizedData && !isNormalizing)) ? "audit" : 
-                       (isNormalizing || (results && !isNormalizing)) ? "normalize" : 
+  const currentPhase = auditedData ? "complete" :
+                       (isAuditing || (normalizedData && !isNormalizing)) ? "audit" :
+                       (isNormalizing || (results && !isNormalizing)) ? "normalize" :
                        (jobId || isNormalizing) ? "extract" : "pending";
 
   const handleUploadStart = (id: string) => {
@@ -62,23 +62,23 @@ export default function Home() {
 
   const handleNormalize = async (tablesToNormalize = results?.tables) => {
     if (!tablesToNormalize) return;
-    
+
     setIsNormalizing(true);
     setError(null);
-    
+
     try {
       const res = await fetch("/api/normalize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tables: tablesToNormalize }),
       });
-      
+
       const data = await res.json();
-      
+
       if (!res.ok || !data.success) {
         throw new Error(data.error || "Failed to normalize data");
       }
-      
+
       setNormalizedData(data);
     } catch (err: any) {
       setError(err.message || "An error occurred during normalization");
@@ -107,8 +107,7 @@ export default function Home() {
       }
 
       setAuditedData(data);
-      
-      // Auto-scroll to export panel slightly after completion
+
       setTimeout(() => {
          window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
       }, 500);
@@ -124,13 +123,11 @@ export default function Home() {
   useEffect(() => {
     if (autoAdvance) {
       if (results && !normalizedData && !isNormalizing && !error) {
-        // Give the user a moment to see the extraction before normalizing
         const timer = setTimeout(() => handleNormalize(results.tables), 1500);
         return () => clearTimeout(timer);
       }
-      
+
       if (normalizedData && !auditedData && !isAuditing && !error) {
-        // Give the user a moment to see the mapping before auditing
         const timer = setTimeout(() => handleAudit(normalizedData.normalized_tables), 1500);
         return () => clearTimeout(timer);
       }
@@ -143,7 +140,6 @@ export default function Home() {
     setAuditActions(getActions());
 
     if (action.type === "edit" && action.new_value) {
-      // Optimistic state update only for demo purposes
       console.log(`Cell updated to: ${action.new_value}`);
     }
 
@@ -160,26 +156,27 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8 overflow-x-hidden">
+    <main className="min-h-screen bg-yl-bg py-12 px-4 sm:px-6 lg:px-8 overflow-x-hidden">
       <div className="max-w-7xl mx-auto relative">
-        
+
         {/* Header */}
         <div className="text-center mb-12 relative z-10">
           <div className="flex justify-center items-center gap-3 mb-2">
-             <div className="w-12 h-12 bg-indigo-600 rounded-xl flex items-center justify-center text-white text-2xl font-black shadow-lg">
-                ⚡
-             </div>
-             <h1 className="text-4xl font-extrabold text-gray-900 tracking-tight sm:text-5xl">
+             <img src="/ylookup_logo.jpeg" alt="Ylookup" className="w-12 h-12 rounded-xl shadow-lg shadow-green-500/20" />
+             <h1 className="text-4xl font-extrabold text-white tracking-tight sm:text-5xl">
                UDINA
              </h1>
           </div>
-          <p className="mt-3 text-xl text-gray-500 font-medium">
+          <p className="mt-3 text-xl text-gray-400 font-medium">
             Financial Document Intelligence
           </p>
-          
-          <button 
+          <p className="mt-1 text-sm text-green-400/70 font-medium tracking-wide">
+            powered by Ylookup
+          </p>
+
+          <button
              onClick={() => setAutoAdvance(!autoAdvance)}
-             className={`mt-4 inline-flex items-center gap-2 text-xs font-bold px-3 py-1.5 rounded-full border transition-colors ${autoAdvance ? 'bg-indigo-100 text-indigo-700 border-indigo-200' : 'bg-gray-100 text-gray-500 border-gray-200'}`}
+             className={`mt-4 inline-flex items-center gap-2 text-xs font-bold px-3 py-1.5 rounded-full border transition-colors ${autoAdvance ? 'bg-green-500/10 text-green-400 border-green-500/30' : 'bg-yl-card text-gray-500 border-yl-border'}`}
           >
              <RefreshCw className={`w-3 h-3 ${autoAdvance ? 'animate-spin-slow' : ''}`} />
              Auto-Advance Demo Mode: {autoAdvance ? "ON" : "OFF"}
@@ -188,13 +185,13 @@ export default function Home() {
 
         {/* Error State */}
         {error && (
-          <motion.div initial="hidden" animate="visible" variants={fadeUpVariant} className="max-w-2xl mx-auto mb-8 bg-red-50 border-l-4 border-red-400 p-4 rounded-md shadow-sm">
+          <motion.div initial="hidden" animate="visible" variants={fadeUpVariant} className="max-w-2xl mx-auto mb-8 bg-red-500/10 border-l-4 border-red-500 p-4 rounded-md">
             <div className="flex">
               <div className="flex-shrink-0">
-                <AlertCircle className="h-5 w-5 text-red-500" />
+                <AlertCircle className="h-5 w-5 text-red-400" />
               </div>
               <div className="ml-3">
-                <p className="text-sm font-medium text-red-800">{error}</p>
+                <p className="text-sm font-medium text-red-300">{error}</p>
               </div>
             </div>
           </motion.div>
@@ -210,10 +207,10 @@ export default function Home() {
         {/* Global Pipeline Progress */}
         <AnimatePresence>
           {currentPhase !== "pending" && (
-            <motion.div 
-               initial={{ opacity: 0, height: 0 }} 
-               animate={{ opacity: 1, height: 'auto' }} 
-               className="sticky top-4 z-40 bg-gray-50/90 backdrop-blur-md pt-4 pb-2 -mx-4 px-4 sm:mx-0 sm:px-0"
+            <motion.div
+               initial={{ opacity: 0, height: 0 }}
+               animate={{ opacity: 1, height: 'auto' }}
+               className="sticky top-4 z-40 bg-yl-bg/90 backdrop-blur-md pt-4 pb-2 -mx-4 px-4 sm:mx-0 sm:px-0"
             >
               <PipelineProgress currentPhase={currentPhase as any} />
             </motion.div>
@@ -229,48 +226,48 @@ export default function Home() {
         {results && (
           <div className="space-y-12 pb-24">
             {/* Top Toolbar */}
-            <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-200 sticky top-32 z-30">
+            <div className="flex justify-between items-center bg-yl-card p-4 rounded-xl shadow-sm border border-yl-border sticky top-32 z-30">
               <button
                 onClick={() => { setResults(null); setNormalizedData(null); setAuditedData(null); setJobId(null); }}
-                className="text-sm text-indigo-600 hover:text-indigo-800 font-semibold flex items-center gap-2"
+                className="text-sm text-green-400 hover:text-green-300 font-semibold flex items-center gap-2"
               >
                 &larr; Start New Document
               </button>
-              
+
               {!normalizedData && !isNormalizing && !autoAdvance && (
                 <button
                   onClick={() => handleNormalize(results.tables)}
-                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-bold rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 transition-colors"
+                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-bold rounded-md shadow-sm text-white bg-green-600 hover:bg-green-500 transition-colors"
                 >
                   Step 2: Normalize to GAAP
                 </button>
               )}
             </div>
-            
+
             {/* Phase 1: Extraction */}
             <motion.div initial="hidden" animate="visible" variants={fadeUpVariant} viewport={{ once: true }}>
                <ExtractionResults data={results} />
             </motion.div>
-            
+
             {/* Phase 2: Normalization */}
             {isNormalizing && (
               <ProcessingStatus statusMessage="Mapping to GAAP taxonomy..." />
             )}
-            
+
             {normalizedData && (
               <motion.div initial="hidden" animate="visible" variants={fadeUpVariant} viewport={{ once: true }}>
                 <div className="flex justify-end mb-4">
                   {!auditedData && !isAuditing && !autoAdvance && (
                     <button
                       onClick={() => handleAudit(normalizedData.normalized_tables)}
-                      className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-bold rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 transition-colors"
+                      className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-bold rounded-md shadow-sm text-white bg-green-600 hover:bg-green-500 transition-colors"
                     >
                       Step 3: Audit Confidence
                     </button>
                   )}
                 </div>
-                <MappingView 
-                  normalizedTables={normalizedData.normalized_tables} 
+                <MappingView
+                  normalizedTables={normalizedData.normalized_tables}
                   onOverride={handleMappingOverride}
                 />
               </motion.div>
@@ -292,10 +289,10 @@ export default function Home() {
 
             {/* Phase 4: Export Panel */}
             {auditedData && (
-               <ExportPanel 
-                 auditedData={auditedData} 
-                 extractionResults={results} 
-                 auditActions={auditActions} 
+               <ExportPanel
+                 auditedData={auditedData}
+                 extractionResults={results}
+                 auditActions={auditActions}
                />
             )}
 

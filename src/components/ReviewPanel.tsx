@@ -20,8 +20,8 @@ export default function ReviewPanel({ cellScore, tableIndex, pageNumber, onActio
 
   const getFlagIcon = () => {
     switch (cellScore.flag) {
-      case "anomaly": return <AlertTriangle className="w-5 h-5 text-red-500" />;
-      case "low_confidence": return <AlertCircle className="w-5 h-5 text-amber-500" />;
+      case "anomaly": return <AlertTriangle className="w-5 h-5 text-red-400" />;
+      case "low_confidence": return <AlertCircle className="w-5 h-5 text-amber-400" />;
       default: return <AlertCircle className="w-5 h-5 text-gray-500" />;
     }
   };
@@ -53,16 +53,16 @@ export default function ReviewPanel({ cellScore, tableIndex, pageNumber, onActio
       animate={{ x: 0, opacity: 1 }}
       exit={{ x: "100%", opacity: 0 }}
       transition={{ type: "spring", damping: 25, stiffness: 200 }}
-      className="fixed inset-y-0 right-0 w-full sm:w-[400px] bg-white shadow-2xl border-l border-gray-200 z-50 flex flex-col"
+      className="fixed inset-y-0 right-0 w-full sm:w-[400px] bg-yl-card shadow-2xl border-l border-yl-border z-50 flex flex-col"
     >
-      <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-gray-50">
-        <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+      <div className="flex items-center justify-between p-4 border-b border-yl-border bg-yl-bg">
+        <h3 className="font-semibold text-white flex items-center gap-2">
           {getFlagIcon()}
           Review Required
         </h3>
-        <button 
+        <button
           onClick={onClose}
-          className="p-1.5 rounded-md text-gray-400 hover:bg-gray-200 hover:text-gray-600 transition-colors"
+          className="p-1.5 rounded-md text-gray-500 hover:bg-yl-border hover:text-gray-300 transition-colors"
         >
           <X className="w-5 h-5" />
         </button>
@@ -70,7 +70,7 @@ export default function ReviewPanel({ cellScore, tableIndex, pageNumber, onActio
 
       <div className="p-6 flex-1 overflow-y-auto">
         <div className="space-y-6">
-          
+
           {/* Extracted Value */}
           <div>
             <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Extracted Value</label>
@@ -80,19 +80,19 @@ export default function ReviewPanel({ cellScore, tableIndex, pageNumber, onActio
                   type="text"
                   value={newValue}
                   onChange={(e) => setNewValue(e.target.value)}
-                  className="w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-lg font-medium p-2 border bg-white text-black"
+                  className="w-full border-yl-border rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 sm:text-lg font-medium p-2 border bg-yl-bg text-white"
                   autoFocus
                 />
-                <button onClick={() => setIsEditing(false)} className="text-gray-400 hover:text-gray-600">
+                <button onClick={() => setIsEditing(false)} className="text-gray-500 hover:text-gray-300">
                   <X className="w-5 h-5" />
                 </button>
               </div>
             ) : (
-              <div className="mt-1 flex justify-between items-center p-3 bg-gray-50 border border-gray-200 rounded-lg">
-                <span className="text-xl font-bold text-gray-900 line-clamp-2">{cellScore.cell_text}</span>
-                <button 
+              <div className="mt-1 flex justify-between items-center p-3 bg-yl-bg border border-yl-border rounded-lg">
+                <span className="text-xl font-bold text-white line-clamp-2">{cellScore.cell_text}</span>
+                <button
                   onClick={() => setIsEditing(true)}
-                  className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors"
+                  className="p-1.5 text-green-400 hover:bg-green-500/10 rounded-md transition-colors"
                 >
                   <Edit2 className="w-4 h-4" />
                 </button>
@@ -101,14 +101,14 @@ export default function ReviewPanel({ cellScore, tableIndex, pageNumber, onActio
           </div>
 
           {/* AI Assessment */}
-          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-            <h4 className="text-sm font-semibold text-amber-900 mb-2 flex justify-between">
+          <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-4">
+            <h4 className="text-sm font-semibold text-amber-300 mb-2 flex justify-between">
               AI Assessment
               <span className={`px-2 py-0.5 rounded text-xs text-white ${cellScore.confidence < 80 ? "bg-red-500" : "bg-amber-500"}`}>
                 {cellScore.confidence.toFixed(1)}% Conf.
               </span>
             </h4>
-            <p className="text-sm text-amber-800 italic">{cellScore.reason}</p>
+            <p className="text-sm text-amber-200/80 italic">{cellScore.reason}</p>
           </div>
 
           {/* Location Context */}
@@ -119,8 +119,8 @@ export default function ReviewPanel({ cellScore, tableIndex, pageNumber, onActio
           {/* Reviewer Note */}
           <div>
              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1 block">Reviewer Note (Optional)</label>
-             <textarea 
-               className="w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm p-2 border bg-white text-black"
+             <textarea
+               className="w-full border-yl-border rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 sm:text-sm p-2 border bg-yl-bg text-white"
                rows={2}
                placeholder="Why did you accept/reject this?"
                value={note}
@@ -131,11 +131,11 @@ export default function ReviewPanel({ cellScore, tableIndex, pageNumber, onActio
       </div>
 
       {/* Action Bar */}
-      <div className="p-4 border-t border-gray-200 bg-gray-50 flex gap-3">
+      <div className="p-4 border-t border-yl-border bg-yl-bg flex gap-3">
         {isEditing ? (
           <button
             onClick={handleEdit}
-            className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2.5 rounded-lg flex justify-center items-center gap-2 shadow-sm transition-colors"
+            className="flex-1 bg-green-600 hover:bg-green-500 text-white font-medium py-2.5 rounded-lg flex justify-center items-center gap-2 shadow-sm transition-colors"
           >
             <Check className="w-4 h-4" />
             Save Correction
@@ -144,14 +144,14 @@ export default function ReviewPanel({ cellScore, tableIndex, pageNumber, onActio
           <>
             <button
               onClick={handleReject}
-              className="flex-1 bg-white border border-gray-300 hover:bg-red-50 hover:text-red-700 hover:border-red-300 text-gray-700 font-medium py-2.5 rounded-lg flex justify-center items-center gap-2 shadow-sm transition-colors"
+              className="flex-1 bg-yl-card border border-yl-border-light hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30 text-gray-400 font-medium py-2.5 rounded-lg flex justify-center items-center gap-2 shadow-sm transition-colors"
             >
               <XCircle className="w-4 h-4" />
               Reject
             </button>
             <button
               onClick={handleAccept}
-              className="flex-1 bg-green-600 hover:bg-green-700 text-white font-medium py-2.5 rounded-lg flex justify-center items-center gap-2 shadow-sm transition-colors"
+              className="flex-1 bg-green-600 hover:bg-green-500 text-white font-medium py-2.5 rounded-lg flex justify-center items-center gap-2 shadow-sm transition-colors"
             >
               <Check className="w-4 h-4" />
               Accept

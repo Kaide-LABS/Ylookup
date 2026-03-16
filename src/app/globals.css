@@ -6,29 +6,28 @@
   html {
     scroll-behavior: smooth;
   }
-  
+
   body {
-    background-color: #f9fafb;
-    color: #111827;
+    background-color: #0b0f0b;
+    color: #e5e7eb;
   }
 
-  /* Global Table Styles to make Marker raw HTML look good */
+  /* Global Table Styles — dark theme */
   table {
     @apply w-full border-collapse text-sm;
   }
   th {
-    @apply bg-gray-100 text-left font-semibold p-2 border border-gray-200 text-gray-900;
+    @apply bg-[#141a14] text-left font-semibold p-2 border border-[#1f2b1f] text-gray-200;
   }
   td {
-    @apply p-2 border border-gray-200 align-top;
+    @apply p-2 border border-[#1f2b1f] align-top text-gray-300;
   }
   tr:nth-child(even) td {
-    @apply bg-gray-50/50;
+    @apply bg-[#0b0f0b]/50;
   }
 }
 
 @layer utilities {
-  /* Subtle scrollbar */
   ::-webkit-scrollbar {
     width: 6px;
     height: 6px;
@@ -37,16 +36,17 @@
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    @apply bg-gray-300 rounded-full;
+    @apply bg-[#1f2b1f] rounded-full;
   }
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-gray-400;
+    @apply bg-[#2a3a2a];
   }
 }
 
 @media print {
   body {
     background-color: white;
+    color: black;
   }
   .no-print {
     display: none;

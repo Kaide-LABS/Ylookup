@@ -35,18 +35,18 @@ export default function PipelineProgress({ currentPhase }: PipelineProgressProps
   return (
     <div className="w-full max-w-4xl mx-auto mb-12">
       <div className="relative flex items-center justify-between">
-        
+
         {/* Connecting Lines Background */}
-        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-1 bg-gray-200 rounded-full z-0"></div>
-        
+        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-1 bg-yl-border rounded-full z-0"></div>
+
         {/* Animated Connecting Line Foreground */}
-        <motion.div 
-          className="absolute left-0 top-1/2 -translate-y-1/2 h-1 bg-indigo-500 rounded-full z-0"
+        <motion.div
+          className="absolute left-0 top-1/2 -translate-y-1/2 h-1 bg-green-500 rounded-full z-0"
           initial={{ width: "0%" }}
-          animate={{ 
-            width: currentPhase === "extract" ? "15%" : 
-                   currentPhase === "normalize" ? "50%" : 
-                   currentPhase === "audit" ? "85%" : "100%" 
+          animate={{
+            width: currentPhase === "extract" ? "15%" :
+                   currentPhase === "normalize" ? "50%" :
+                   currentPhase === "audit" ? "85%" : "100%"
           }}
           transition={{ duration: 0.5, ease: "easeInOut" }}
         ></motion.div>
@@ -54,17 +54,17 @@ export default function PipelineProgress({ currentPhase }: PipelineProgressProps
         {steps.map((step, index) => {
           const status = getStepStatus(step.id);
           const Icon = step.icon;
-          
+
           return (
             <div key={step.id} className="relative z-10 flex flex-col items-center">
               <motion.div
                 initial={{ scale: 0.8, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 transition={{ delay: index * 0.1 }}
-                className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-sm border-2 transition-colors duration-300 bg-white
-                  ${status === "complete" ? "border-green-500 text-green-500" : 
-                    status === "active" ? "border-indigo-500 text-indigo-600 ring-4 ring-indigo-100" : 
-                    "border-gray-200 text-gray-400"}
+                className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-sm border-2 transition-colors duration-300 bg-yl-card
+                  ${status === "complete" ? "border-green-500 text-green-400" :
+                    status === "active" ? "border-green-400 text-green-400 ring-4 ring-green-500/20" :
+                    "border-yl-border text-gray-600"}
                 `}
               >
                 {status === "complete" ? (
@@ -77,12 +77,12 @@ export default function PipelineProgress({ currentPhase }: PipelineProgressProps
                   <Icon className="w-6 h-6" />
                 )}
               </motion.div>
-              
+
               <div className="mt-3 text-center">
-                <p className={`text-sm font-bold ${status === "active" ? "text-indigo-900" : status === "complete" ? "text-green-700" : "text-gray-400"}`}>
+                <p className={`text-sm font-bold ${status === "active" ? "text-green-400" : status === "complete" ? "text-green-500" : "text-gray-600"}`}>
                   Step {index + 1}
                 </p>
-                <p className={`text-xs font-medium mt-0.5 ${status === "active" ? "text-indigo-600" : status === "complete" ? "text-gray-600" : "text-gray-400"}`}>
+                <p className={`text-xs font-medium mt-0.5 ${status === "active" ? "text-green-400/70" : status === "complete" ? "text-gray-400" : "text-gray-600"}`}>
                   {step.label}
                 </p>
               </div>

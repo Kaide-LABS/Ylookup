@@ -27,7 +27,7 @@ export default function UploadZone({ onUploadStart, onError }: UploadZoneProps) 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    
+
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const droppedFile = e.dataTransfer.files[0];
       if (droppedFile.type === "application/pdf") {
@@ -56,11 +56,11 @@ export default function UploadZone({ onUploadStart, onError }: UploadZoneProps) 
         method: "POST",
         body: formData,
       });
-      
+
       if (!response.ok) {
         throw new Error("Failed to upload file");
       }
-      
+
       const data = await response.json();
       if (data.job_id) {
         onUploadStart(data.job_id);
@@ -79,16 +79,16 @@ export default function UploadZone({ onUploadStart, onError }: UploadZoneProps) 
       <motion.div
         animate={{ scale: isDragging ? 1.02 : 1 }}
         className={`border-2 border-dashed rounded-xl p-10 text-center transition-colors ${
-          isDragging ? "border-blue-500 bg-blue-50" : "border-gray-300 bg-white"
+          isDragging ? "border-green-500 bg-green-500/5" : "border-yl-border-light bg-yl-card"
         }`}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
       >
-        <UploadCloud className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-        <h3 className="text-lg font-medium text-gray-900 mb-2">Drag and drop your PDF here</h3>
-        <p className="text-sm text-gray-500 mb-6">or click to select a file (Max 50MB)</p>
-        
+        <UploadCloud className="mx-auto h-12 w-12 text-gray-500 mb-4" />
+        <h3 className="text-lg font-medium text-white mb-2">Drag and drop your PDF here</h3>
+        <p className="text-sm text-gray-400 mb-6">or click to select a file (Max 50MB)</p>
+
         <input
           type="file"
           accept="application/pdf"
@@ -98,14 +98,14 @@ export default function UploadZone({ onUploadStart, onError }: UploadZoneProps) 
         />
         <label
           htmlFor="file-upload"
-          className="cursor-pointer bg-white px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50"
+          className="cursor-pointer bg-yl-card px-4 py-2 border border-yl-border-light rounded-md shadow-sm text-sm font-medium text-gray-300 hover:bg-yl-border hover:text-white transition-colors"
         >
           Select File
         </label>
 
         {file && (
-          <div className="mt-6 flex items-center justify-center space-x-2 text-sm text-gray-700 bg-gray-50 p-3 rounded-md">
-            <FileType className="h-5 w-5 text-blue-500" />
+          <div className="mt-6 flex items-center justify-center space-x-2 text-sm text-gray-300 bg-yl-bg p-3 rounded-md border border-yl-border">
+            <FileType className="h-5 w-5 text-green-400" />
             <span className="font-medium truncate max-w-[200px]">{file.name}</span>
             <span className="text-gray-500">({(file.size / 1024 / 1024).toFixed(2)} MB)</span>
           </div>
@@ -116,7 +116,7 @@ export default function UploadZone({ onUploadStart, onError }: UploadZoneProps) 
             onClick={handleUpload}
             disabled={isUploading}
             className={`mt-4 w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white ${
-              isUploading ? "bg-blue-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"
+              isUploading ? "bg-green-700 cursor-not-allowed" : "bg-green-600 hover:bg-green-500"
             }`}
           >
             {isUploading ? "Uploading..." : "Extract Tables"}

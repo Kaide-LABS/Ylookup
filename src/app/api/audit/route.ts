@@ -147,9 +147,9 @@ export async function POST(request: Request) {
                $(cell).addClass("cursor-pointer transition-colors duration-200");
                
                if (confidence < 80) {
-                 $(cell).addClass("bg-red-50 border-l-4 border-red-500 hover:bg-red-100");
+                 $(cell).attr("style", "background-color: rgba(239,68,68,0.15); border-left: 4px solid #ef4444; cursor: pointer;");
                } else {
-                 $(cell).addClass("bg-amber-50 border-l-4 border-amber-400 hover:bg-amber-100");
+                 $(cell).attr("style", "background-color: rgba(245,158,11,0.15); border-left: 4px solid #f59e0b; cursor: pointer;");
                }
             }
             totalConfidence += confidence;
