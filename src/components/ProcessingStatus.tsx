@@ -27,7 +27,7 @@ export default function ProcessingStatus({ jobId, statusMessage, onComplete, onE
 
     const checkStatus = async () => {
       try {
-        const res = await fetch(`http://localhost:8000/status/${jobId}`);
+        const res = await fetch(`/api/status/${jobId}`);
         if (!res.ok) throw new Error("Failed to check status");
 
         const data = await res.json();

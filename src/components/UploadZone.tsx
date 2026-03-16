@@ -52,7 +52,7 @@ export default function UploadZone({ onUploadStart, onError }: UploadZoneProps) 
     formData.append("file", file);
 
     try {
-      const response = await fetch("http://localhost:8000/extract-tables", {
+      const response = await fetch("/api/extract-tables", {
         method: "POST",
         body: formData,
       });
