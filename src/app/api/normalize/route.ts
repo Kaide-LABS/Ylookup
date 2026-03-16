@@ -45,8 +45,16 @@ export async function POST(request: Request) {
           
           CRITICAL RULE FOR SUB-ITEMS vs TOTALS:
           Financial statements often break down line items (e.g., "Net sales: Products" and "Net sales: Services") and then provide a total (e.g., "Total net sales"). 
-          DO NOT map the individual sub-items (like "Net sales: Products") to a top-level GAAP term like "Revenue", because that would create duplicate "Revenue" rows and destroy the hierarchical breakdown.
-          Instead, map ONLY the "Total" row (e.g., "Total net sales") to the top-level GAAP term (e.g., "Revenue"), and leave the individual sub-items as "Unmapped" so their original descriptive names are preserved.
+          DO NOT map individual sub-items (like "Net sales: Products") to a generic top-level GAAP term like "Revenue" by itself, because that would create duplicate "Revenue" rows and destroy the hierarchical breakdown.
+          INSTEAD, you must standardize the base GAAP term while preserving the specific sub-category descriptor. 
+          For example:
+          - "Net sales: Products" should map to "Revenue: Products" (or "Revenue - Products").
+          - "Net sales: Services" should map to "Revenue: Services" (or "Revenue - Services").
+          - "Total net sales" should map to the top-level GAAP term "Revenue".
+          - "Cost of sales: Products" should map to "Cost of Goods Sold: Products".
+          - "Earnings per share: Basic" should map to "Earnings Per Share: Basic".
+          
+          This ensures the terminology is fully standardized to GAAP (Revenue, COGS, EPS, etc.) but the granular breakdown that the founders rely on is perfectly preserved without messy inconsistencies.
           
           GAAP Taxonomy Reference:
           ${JSON.stringify(GAAP_TAXONOMY, null, 2)}
