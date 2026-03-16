@@ -59,7 +59,7 @@ export async function POST(request: Request) {
         `;
 
         const response = await openai.chat.completions.create({
-          model: "gpt-4o-mini",
+          model: "gpt-5.2",
           messages: [
             { role: "system", content: "You are an expert financial auditor. Follow instructions precisely." },
             { role: "user", content: promptWithTableData }
@@ -118,7 +118,9 @@ export async function POST(request: Request) {
             }
         }
         
-        const flaggedCells = result.flagged_cells || [];
+        const flaggedCells = (result.flagged_cells || []).filter(
+          (c: any) => !/dollar\s*sign/i.test(c.reason || "")
+        );
         const flaggedMap = new Map();
         flaggedCells.forEach((c: any) => {
             flaggedMap.set(`${c.row_index}-${c.col_index}`, c);

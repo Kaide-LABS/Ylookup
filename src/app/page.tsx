@@ -137,7 +137,7 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen bg-yl-bg py-12 px-4 sm:px-6 lg:px-8 overflow-x-hidden">
+    <main className="min-h-screen bg-yl-bg py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto relative">
 
         {/* Header */}
@@ -177,15 +177,41 @@ export default function Home() {
           </motion.div>
         )}
 
-        {/* Global Pipeline Progress */}
+        {/* Floating Pipeline Header */}
         <AnimatePresence>
           {currentPhase !== "pending" && (
             <motion.div
                initial={{ opacity: 0, height: 0 }}
                animate={{ opacity: 1, height: 'auto' }}
-               className="sticky top-4 z-40 bg-yl-bg/90 backdrop-blur-md pt-4 pb-2 -mx-4 px-4 sm:mx-0 sm:px-0"
+               className="sticky top-0 z-40 bg-yl-bg/95 backdrop-blur-md pt-4 pb-3 -mx-4 px-4 sm:mx-0 sm:px-0 border-b border-yl-border"
             >
               <PipelineProgress currentPhase={currentPhase as any} />
+              {results && (
+                <div className="flex justify-between items-center max-w-3xl mx-auto mt-2 px-2">
+                  <button
+                    onClick={() => { setResults(null); setNormalizedData(null); setAuditedData(null); setJobId(null); }}
+                    className="text-xs text-green-400 hover:text-green-300 font-semibold flex items-center gap-1"
+                  >
+                    &larr; New Document
+                  </button>
+                  {!normalizedData && !isNormalizing && (
+                    <button
+                      onClick={() => handleNormalize(results.tables)}
+                      className="inline-flex items-center px-3 py-1.5 text-xs font-bold rounded-md text-white bg-green-600 hover:bg-green-500 transition-colors"
+                    >
+                      Step 2: Normalize to GAAP
+                    </button>
+                  )}
+                  {normalizedData && !auditedData && !isAuditing && (
+                    <button
+                      onClick={() => handleAudit(normalizedData.normalized_tables)}
+                      className="inline-flex items-center px-3 py-1.5 text-xs font-bold rounded-md text-white bg-green-600 hover:bg-green-500 transition-colors"
+                    >
+                      Step 3: Audit Confidence
+                    </button>
+                  )}
+                </div>
+              )}
             </motion.div>
           )}
         </AnimatePresence>
@@ -198,25 +224,6 @@ export default function Home() {
         {/* Results Container */}
         {results && (
           <div className="space-y-12 pb-24">
-            {/* Top Toolbar */}
-            <div className="flex justify-between items-center bg-yl-card p-4 rounded-xl shadow-sm border border-yl-border sticky top-32 z-30">
-              <button
-                onClick={() => { setResults(null); setNormalizedData(null); setAuditedData(null); setJobId(null); }}
-                className="text-sm text-green-400 hover:text-green-300 font-semibold flex items-center gap-2"
-              >
-                &larr; Start New Document
-              </button>
-
-              {!normalizedData && !isNormalizing && (
-                <button
-                  onClick={() => handleNormalize(results.tables)}
-                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-bold rounded-md shadow-sm text-white bg-green-600 hover:bg-green-500 transition-colors"
-                >
-                  Step 2: Normalize to GAAP
-                </button>
-              )}
-            </div>
-
             {/* Phase 1: Extraction */}
             <motion.div initial="hidden" animate="visible" variants={fadeUpVariant} viewport={{ once: true }}>
                <ExtractionResults data={results} />
@@ -229,16 +236,6 @@ export default function Home() {
 
             {normalizedData && (
               <motion.div initial="hidden" animate="visible" variants={fadeUpVariant} viewport={{ once: true }}>
-                <div className="flex justify-end mb-4">
-                  {!auditedData && !isAuditing && (
-                    <button
-                      onClick={() => handleAudit(normalizedData.normalized_tables)}
-                      className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-bold rounded-md shadow-sm text-white bg-green-600 hover:bg-green-500 transition-colors"
-                    >
-                      Step 3: Audit Confidence
-                    </button>
-                  )}
-                </div>
                 <MappingView
                   normalizedTables={normalizedData.normalized_tables}
                   onOverride={handleMappingOverride}

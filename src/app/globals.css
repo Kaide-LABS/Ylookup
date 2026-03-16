@@ -22,9 +22,6 @@
   td {
     @apply p-2 border border-[#1f2b1f] align-top text-gray-300;
   }
-  tr:nth-child(even) td {
-    @apply bg-[#0b0f0b]/50;
-  }
 }
 
 @layer utilities {
