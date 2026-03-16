@@ -5,15 +5,24 @@ import { motion } from "framer-motion";
 import { Loader2 } from "lucide-react";
 
 interface ProcessingStatusProps {
-  jobId: string;
-  onComplete: (data: any) => void;
-  onError: (error: string) => void;
+  jobId?: string;
+  statusMessage?: string;
+  onComplete?: (data: any) => void;
+  onError?: (error: string) => void;
 }
 
-export default function ProcessingStatus({ jobId, onComplete, onError }: ProcessingStatusProps) {
-  const [statusText, setStatusText] = useState("Extracting tables...");
+export default function ProcessingStatus({ jobId, statusMessage, onComplete, onError }: ProcessingStatusProps) {
+  const [statusText, setStatusText] = useState(statusMessage || "Extracting tables...");
 
   useEffect(() => {
+    if (statusMessage) {
+      setStatusText(statusMessage);
+    }
+  }, [statusMessage]);
+
+  useEffect(() => {
+    if (!jobId) return;
+    
     let intervalId: NodeJS.Timeout;
 
     const checkStatus = async () => {
@@ -26,17 +35,17 @@ export default function ProcessingStatus({ jobId, onComplete, onError }: Process
         if (data.status === "completed") {
           setStatusText("Processing complete");
           clearInterval(intervalId);
-          onComplete(data);
+          if (onComplete) onComplete(data);
         } else if (data.status === "failed") {
           clearInterval(intervalId);
-          onError(data.error || "Processing failed");
+          if (onError) onError(data.error || "Processing failed");
         } else {
           // still processing
-          setStatusText("Extracting tables...");
+          if (!statusMessage) setStatusText("Extracting tables...");
         }
       } catch (err: any) {
         clearInterval(intervalId);
-        onError(err.message || "Error checking status");
+        if (onError) onError(err.message || "Error checking status");
       }
     };
 
@@ -44,7 +53,7 @@ export default function ProcessingStatus({ jobId, onComplete, onError }: Process
     checkStatus(); // Initial check
 
     return () => clearInterval(intervalId);
-  }, [jobId, onComplete, onError]);
+  }, [jobId, onComplete, onError, statusMessage]);
 
   return (
     <div className="w-full max-w-2xl mx-auto mt-10 text-center p-10 bg-white rounded-xl shadow-sm border border-gray-100">

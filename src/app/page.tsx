@@ -4,16 +4,22 @@ import { useState } from "react";
 import UploadZone from "@/components/UploadZone";
 import ProcessingStatus from "@/components/ProcessingStatus";
 import ExtractionResults from "@/components/ExtractionResults";
+import MappingView from "@/components/MappingView";
 
 export default function Home() {
   const [jobId, setJobId] = useState<string | null>(null);
   const [results, setResults] = useState<any | null>(null);
   const [error, setError] = useState<string | null>(null);
+  
+  // Phase 2 State
+  const [normalizedData, setNormalizedData] = useState<any | null>(null);
+  const [isNormalizing, setIsNormalizing] = useState(false);
 
   const handleUploadStart = (id: string) => {
     setJobId(id);
     setError(null);
     setResults(null);
+    setNormalizedData(null);
   };
 
   const handleComplete = (data: any) => {
@@ -24,6 +30,34 @@ export default function Home() {
   const handleError = (errMsg: string) => {
     setError(errMsg);
     setJobId(null);
+    setIsNormalizing(false);
+  };
+
+  const handleNormalize = async () => {
+    if (!results || !results.tables) return;
+    
+    setIsNormalizing(true);
+    setError(null);
+    
+    try {
+      const res = await fetch("/api/normalize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tables: results.tables }),
+      });
+      
+      const data = await res.json();
+      
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to normalize data");
+      }
+      
+      setNormalizedData(data);
+    } catch (err: any) {
+      setError(err.message || "An error occurred during normalization");
+    } finally {
+      setIsNormalizing(false);
+    }
   };
 
   return (
@@ -53,7 +87,7 @@ export default function Home() {
           </div>
         )}
 
-        {!jobId && !results && (
+        {!jobId && !results && !isNormalizing && (
           <UploadZone onUploadStart={handleUploadStart} onError={handleError} />
         )}
 
@@ -63,13 +97,33 @@ export default function Home() {
 
         {results && (
           <div className="space-y-8">
-            <button
-              onClick={() => setResults(null)}
-              className="text-sm text-blue-600 hover:text-blue-500 font-medium"
-            >
-              &larr; Upload another document
-            </button>
+            <div className="flex justify-between items-center">
+              <button
+                onClick={() => { setResults(null); setNormalizedData(null); }}
+                className="text-sm text-blue-600 hover:text-blue-500 font-medium"
+              >
+                &larr; Upload another document
+              </button>
+              
+              {!normalizedData && !isNormalizing && (
+                <button
+                  onClick={handleNormalize}
+                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                >
+                  Normalize to GAAP
+                </button>
+              )}
+            </div>
+            
             <ExtractionResults data={results} />
+            
+            {isNormalizing && (
+              <ProcessingStatus statusMessage="Mapping to GAAP taxonomy..." />
+            )}
+            
+            {normalizedData && (
+              <MappingView normalizedTables={normalizedData.normalized_tables} />
+            )}
           </div>
         )}
       </div>

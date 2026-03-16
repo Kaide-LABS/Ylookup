@@ -5,7 +5,7 @@
 **Version:** 1.0
 **Date:** 2026-03-16
 **Author:** Claude (Architect) — for Gemini (Implementor)
-**Status:** Phase 1 Spec Ready
+**Status:** Phase 2 Spec Ready
 
 ---
 
@@ -242,20 +242,316 @@ Loading indicator during extraction (Polling state):
 
 ---
 
-## 6. Phase 2 Spec (Preview — detailed spec added before implementation)
+## 6. Phase 2 Detailed Spec — Semantic Entity Mapping
 
-**Goal:** Normalize extracted fields to GAAP taxonomy using Gemini 2.5 Pro.
+**Goal:** After Phase 1 extracts raw tables, Phase 2 sends them to Gemini 2.5 Pro to normalize field names/headers to a standardized GAAP taxonomy. The user sees a before/after mapping view with rationale per field.
 
-Files to create/modify:
-- `src/app/api/normalize/route.ts` — Gemini 2.5 Pro API route
-- `src/lib/gaap-ontology.ts` — GAAP field mapping taxonomy (common financial term variants)
-- `src/lib/gemini-client.ts` — Gemini client wrapper using `@google/genai`
-- `src/components/MappingView.tsx` — Before/after field mapping visualization
+### 6.1 New Dependency
 
-Acceptance criteria:
-- Extracted raw fields mapped to standardized GAAP terms
-- Visual before/after: "Gross Rev" -> "Revenue", "SBC" -> "Stock-Based Compensation"
-- Mapping rationale shown per field
+Add to `package.json`:
+```json
+"@google/genai": "^1.0.0"
+```
+
+### 6.2 Environment
+
+Add to `.env.local` and `docker-compose.yml` frontend env:
+```
+GEMINI_API_KEY=...   # Same key used by backend Marker, but now also used by Next.js
+```
+
+**Important:** This is a server-side env var (no `NEXT_PUBLIC_` prefix). The Gemini call happens in a Next.js API route, NOT in the browser.
+
+### 6.3 Files to Create
+
+#### `src/lib/gemini-client.ts`
+
+```typescript
+/**
+ * Singleton Gemini client for server-side use in API routes.
+ *
+ * Usage:
+ *   import { gemini } from "@/lib/gemini-client";
+ *   const response = await gemini.models.generateContent({ ... });
+ *
+ * Implementation:
+ *   import { GoogleGenAI } from "@google/genai";
+ *   export const gemini = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+ */
+```
+
+#### `src/lib/gaap-ontology.ts`
+
+```typescript
+/**
+ * GAAP standard taxonomy — the canonical field names we normalize TO.
+ * This is the "target vocabulary" that Gemini maps extracted headers into.
+ *
+ * Export a flat array of objects:
+ *
+ * export const GAAP_TAXONOMY: GaapTerm[] = [...]
+ *
+ * interface GaapTerm {
+ *   canonical: string;          // e.g. "Revenue"
+ *   category: string;           // e.g. "Income Statement"
+ *   aliases: string[];          // e.g. ["Gross Rev", "Net Revenue", "Total Revenue", "Sales"]
+ *   description: string;        // e.g. "Total income from goods/services before deductions"
+ * }
+ *
+ * Include at minimum these 20 terms across Income Statement, Balance Sheet, and Cash Flow:
+ *
+ * Income Statement:
+ *   - Revenue (aliases: Gross Rev, Net Revenue, Total Revenue, Sales, Turnover, Net Sales)
+ *   - Cost of Goods Sold (aliases: COGS, Cost of Sales, Cost of Revenue)
+ *   - Gross Profit (aliases: Gross Margin, Gross Income)
+ *   - Operating Expenses (aliases: OpEx, SG&A, Selling General & Administrative)
+ *   - Stock-Based Compensation (aliases: SBC, Share-Based Compensation, Equity Compensation)
+ *   - Depreciation and Amortization (aliases: D&A, Dep & Amort)
+ *   - Operating Income (aliases: EBIT, Operating Profit, Income from Operations)
+ *   - Interest Expense (aliases: Int Exp, Finance Costs)
+ *   - Net Income (aliases: Net Profit, Net Earnings, Bottom Line, PAT, Profit After Tax)
+ *   - Earnings Per Share (aliases: EPS, Basic EPS, Diluted EPS)
+ *
+ * Balance Sheet:
+ *   - Cash and Cash Equivalents (aliases: Cash & Equiv, Cash on Hand, Liquid Assets)
+ *   - Accounts Receivable (aliases: A/R, Trade Receivables, Debtors)
+ *   - Total Assets (aliases: Total Consolidated Assets)
+ *   - Accounts Payable (aliases: A/P, Trade Payables, Creditors)
+ *   - Long-Term Debt (aliases: LT Debt, Non-Current Borrowings, Long-Term Borrowings)
+ *   - Total Liabilities (aliases: Total Consolidated Liabilities)
+ *   - Stockholders' Equity (aliases: Shareholders' Equity, Total Equity, Net Assets)
+ *
+ * Cash Flow:
+ *   - Operating Cash Flow (aliases: CFO, Cash from Operations, Net Cash from Operating)
+ *   - Capital Expenditures (aliases: CapEx, PP&E Purchases, Purchase of Property)
+ *   - Free Cash Flow (aliases: FCF)
+ *
+ * This taxonomy is sent as context in the Gemini prompt. Gemini can also map to terms
+ * NOT in this list if it recognizes a standard GAAP/IFRS term — the list is a hint, not a constraint.
+ */
+```
+
+#### `src/app/api/normalize/route.ts`
+
+```typescript
+/**
+ * POST /api/normalize
+ *
+ * Accepts: Phase 1 extraction results (the tables array from /status/{job_id})
+ * Returns: Normalized mapping for each table's headers
+ *
+ * Request body:
+ * {
+ *   tables: Array<{ page: number, table_index: number, raw_html: string, ... }>
+ * }
+ *
+ * Implementation:
+ * 1. Import gemini client from "@/lib/gemini-client"
+ * 2. Import GAAP_TAXONOMY from "@/lib/gaap-ontology"
+ * 3. For each table, extract headers from raw_html (parse with a simple regex or DOMParser-like approach on server)
+ *    - Alternatively, pass the raw_html directly to Gemini and let it identify + normalize headers
+ * 4. Call gemini.models.generateContent() with:
+ *    - model: "gemini-2.5-pro"
+ *    - contents: A prompt containing:
+ *      a) The GAAP_TAXONOMY as reference context
+ *      b) The extracted table HTML
+ *      c) Instruction: "For each column header and row label in this financial table,
+ *         map it to the closest GAAP standard term. If no match, keep the original.
+ *         Provide a brief rationale for each mapping."
+ *    - config:
+ *        responseMimeType: "application/json"
+ *        responseJsonSchema: (the MappingResult schema below)
+ *
+ * Response JSON Schema (for Gemini structured output):
+ * {
+ *   type: "object",
+ *   properties: {
+ *     mappings: {
+ *       type: "array",
+ *       items: {
+ *         type: "object",
+ *         properties: {
+ *           original_term: { type: "string" },
+ *           canonical_term: { type: "string" },
+ *           category: { type: "string" },
+ *           confidence: { type: "number" },       // 0-1
+ *           rationale: { type: "string" }
+ *         },
+ *         required: ["original_term", "canonical_term", "category", "confidence", "rationale"]
+ *       }
+ *     }
+ *   },
+ *   required: ["mappings"]
+ * }
+ *
+ * API Route response:
+ * {
+ *   success: boolean,
+ *   normalized_tables: [
+ *     {
+ *       page: number,
+ *       table_index: number,
+ *       mappings: MappingResult[],           // from Gemini
+ *       raw_html: string,                     // original HTML passthrough
+ *       normalized_html: string               // HTML with headers replaced by canonical terms
+ *     }
+ *   ]
+ * }
+ *
+ * For normalized_html: do a simple string replace on the raw_html, swapping each
+ * original_term with canonical_term. This gives the frontend both versions to display.
+ *
+ * Error handling:
+ * - If Gemini fails, return { success: false, error: "..." }
+ * - If a table has no recognizable headers, return it with empty mappings array
+ */
+```
+
+#### `src/components/MappingView.tsx`
+
+```typescript
+/**
+ * Visual before/after field mapping display.
+ *
+ * Props:
+ * {
+ *   normalizedTables: Array<{
+ *     page: number,
+ *     table_index: number,
+ *     mappings: Array<{
+ *       original_term: string,
+ *       canonical_term: string,
+ *       category: string,
+ *       confidence: number,
+ *       rationale: string
+ *     }>,
+ *     raw_html: string,
+ *     normalized_html: string
+ *   }>
+ * }
+ *
+ * Layout:
+ * - Tab bar for each table (reuse pattern from ExtractionResults)
+ * - For the active table, show a two-column mapping list:
+ *     LEFT column: original term (with strikethrough styling, muted color)
+ *     Arrow icon (ArrowRight from lucide-react)
+ *     RIGHT column: canonical GAAP term (bold, colored by category)
+ *   - Below each mapping row: rationale text in small gray italic
+ *   - Confidence shown as a colored dot: green >= 0.9, amber >= 0.7, red < 0.7
+ *
+ * - Below the mapping list: toggle between "Original Table" and "Normalized Table"
+ *   - Original: render raw_html (sanitized with DOMPurify, same pattern as ExtractionResults)
+ *   - Normalized: render normalized_html (sanitized)
+ *
+ * - Category legend at bottom grouping mappings by Income Statement / Balance Sheet / Cash Flow
+ *   with colored badges (blue / green / purple)
+ *
+ * Animations:
+ * - Framer Motion: mappings animate in with staggered fade + slide from left
+ * - Arrow icon has a subtle pulse animation
+ */
+```
+
+### 6.4 Files to Modify
+
+#### `src/app/page.tsx`
+
+Extend the page to support a two-step flow:
+
+```typescript
+/**
+ * Updated state:
+ *   - Add: normalizedData, isNormalizing
+ *   - After extraction completes and results are shown, add a "Normalize to GAAP" button
+ *   - Clicking it: POST results.tables to /api/normalize
+ *   - While normalizing: show ProcessingStatus with text "Mapping to GAAP taxonomy..."
+ *   - When complete: show MappingView below ExtractionResults
+ *
+ * Updated layout (after extraction):
+ *   <ExtractionResults data={results} />
+ *   {!normalizedData && !isNormalizing && (
+ *     <button onClick={handleNormalize}>Normalize to GAAP</button>
+ *   )}
+ *   {isNormalizing && <ProcessingStatus text="Mapping to GAAP taxonomy..." />}
+ *   {normalizedData && <MappingView normalizedTables={normalizedData.normalized_tables} />}
+ */
+```
+
+#### `src/components/ProcessingStatus.tsx`
+
+Make status text configurable:
+
+```typescript
+/**
+ * Add optional prop: statusMessage?: string
+ * If provided, display it instead of the default "Extracting tables..."
+ * This allows reuse for Phase 2 ("Mapping to GAAP taxonomy...") and Phase 3
+ *
+ * Keep the polling behavior when jobId is provided (Phase 1 flow)
+ * When jobId is NOT provided, just show the spinner + custom message (Phase 2 flow — no polling needed, the parent manages the async call)
+ */
+```
+
+### 6.5 Data Flow
+
+```
+Phase 1 results (tables with raw_html)
+  |
+  v
+User clicks "Normalize to GAAP"
+  |
+  v
+POST /api/normalize { tables }
+  |
+  v
+Next.js API route:
+  - Sends each table's HTML + GAAP_TAXONOMY to Gemini 2.5 Pro
+  - Gemini returns structured JSON: { mappings: [...] }
+  - Route builds normalized_html by replacing terms
+  |
+  v
+Response: { normalized_tables: [...] }
+  |
+  v
+MappingView renders before/after
+```
+
+### 6.6 Project Structure After Phase 2
+
+```
+/Ylookup
+  /backend                    (unchanged from Phase 1)
+  /src
+    /app
+      page.tsx                 (MODIFIED — add normalize flow)
+      layout.tsx
+      globals.css
+      /api
+        /normalize
+          route.ts             (NEW)
+    /components
+      UploadZone.tsx
+      ExtractionResults.tsx
+      ProcessingStatus.tsx     (MODIFIED — configurable status text)
+      MappingView.tsx          (NEW)
+    /lib
+      gemini-client.ts         (NEW)
+      gaap-ontology.ts         (NEW)
+  package.json                 (MODIFIED — add @google/genai)
+  .env.local                   (MODIFIED — add GEMINI_API_KEY)
+```
+
+### 6.7 Acceptance Criteria
+
+- [ ] "Normalize to GAAP" button appears after extraction completes
+- [ ] Clicking it calls Gemini 2.5 Pro via `/api/normalize` and returns structured mappings
+- [ ] MappingView shows before/after for each header: original -> canonical GAAP term
+- [ ] Each mapping shows rationale text and confidence dot (green/amber/red)
+- [ ] Normalized table view replaces headers with canonical terms
+- [ ] At least 10 common financial term variants are correctly normalized (test with a 10-K)
+- [ ] Categories (Income Statement / Balance Sheet / Cash Flow) shown with colored badges
+- [ ] Loading state shown during Gemini call ("Mapping to GAAP taxonomy...")
+- [ ] Error handling: Gemini timeout/failure shows user-friendly error, extraction results preserved
 
 ---
 
