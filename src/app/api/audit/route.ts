@@ -48,6 +48,8 @@ export async function POST(request: Request) {
           1. Contain an anomaly (e.g., unexpected value type, wrong sign, magnitude mismatch).
           2. Are of low extraction confidence (e.g., poor OCR, strange numeric format, sub-totals that don't add up).
           
+          CRITICAL FORMATTING RULE: Do NOT flag the presence of dollar signs ($) on specific rows as an anomaly or format issue. In standard GAAP financial statements, it is perfectly normal for only the top line (e.g., Net Sales) and bottom lines (e.g., Net Income, EPS) to have dollar signs, while middle rows do not. Treat this as standard formatting.
+
           For each flagged cell, assign a confidence score (< 95), a flag type, and a specific reason.
           If no cells have issues, return an empty array for cell_scores.
           Also provide a brief summary of any cross-reference issues found in the entire table.
