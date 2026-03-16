@@ -4,7 +4,7 @@ import * as cheerio from "cheerio";
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { format, audited_tables, audit_trail, document_type, metadata } = body;
+    const { format, audited_tables, audit_trail = [], document_type, metadata } = body;
 
     if (format === "json") {
       const jsonOutput = {
