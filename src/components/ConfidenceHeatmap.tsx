@@ -3,6 +3,7 @@
 import { AlertCircle, AlertTriangle, Info, CheckCircle2 } from "lucide-react";
 import { CellScore } from "@/lib/audit-trail";
 import { useEffect, useRef } from "react";
+import DOMPurify from "isomorphic-dompurify";
 
 interface ConfidenceHeatmapProps {
   auditedTable: {
@@ -120,7 +121,7 @@ export default function ConfidenceHeatmap({ auditedTable, onCellClick }: Confide
         <div 
           ref={tableRef}
           className="p-4 prose max-w-none" 
-          dangerouslySetInnerHTML={{ __html: audited_html }} 
+          dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(audited_html, { ADD_ATTR: ["data-row", "data-col", "data-confidence", "data-flag", "data-reason"] }) }}
         />
         {summary.flagged_count > 0 && (
           <div className="absolute top-4 right-4 animate-bounce bg-amber-500 text-white text-xs font-bold px-3 py-1.5 rounded shadow-md flex items-center gap-2 pointer-events-none">

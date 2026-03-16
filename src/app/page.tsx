@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { AnimatePresence } from "framer-motion";
+import { AlertCircle } from "lucide-react";
 import UploadZone from "@/components/UploadZone";
 import ProcessingStatus from "@/components/ProcessingStatus";
 import ExtractionResults from "@/components/ExtractionResults";
@@ -105,13 +106,25 @@ export default function Home() {
     setAuditActions(getActions());
 
     if (action.type === "edit" && action.new_value) {
-      // Optimitically update the auditedData for demo purposes
-      // A more robust implementation would re-parse the HTML or send back to server
-      const newData = { ...auditedData };
-      const currentTable = newData.audited_tables[activeTableIndex];
-      // Note: We're not updating the HTML here for simplicity, just the state.
-      // In a real app, you'd replace the text in the DOM or the raw string
-      console.log(`Cell updated to: ${action.new_value}`);
+      // Update the audited_html by replacing the cell text via string replacement
+      // targeted by row/col data attributes to avoid false matches
+      const newData = JSON.parse(JSON.stringify(auditedData));
+      const table = newData.audited_tables[activeTableIndex];
+      if (table?.audited_html) {
+        // Find the cell by its data attributes and replace its text content
+        const pattern = new RegExp(
+          `(data-row="${action.cell.row_index}"[^>]*data-col="${action.cell.col_index}"[^>]*>)[^<]*(<)`,
+        );
+        table.audited_html = table.audited_html.replace(pattern, `$1${action.new_value}$2`);
+        // Also update the cell_scores entry
+        const scoreIdx = table.cell_scores.findIndex(
+          (s: CellScore) => s.row_index === action.cell.row_index && s.col_index === action.cell.col_index
+        );
+        if (scoreIdx !== -1) {
+          table.cell_scores[scoreIdx].cell_text = action.new_value;
+        }
+      }
+      setAuditedData(newData);
     }
 
     setSelectedCell(null);
