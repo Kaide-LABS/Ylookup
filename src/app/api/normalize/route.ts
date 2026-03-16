@@ -43,6 +43,11 @@ export async function POST(request: Request) {
           Your task is to map each term to its closest equivalent in the standard GAAP Taxonomy provided.
           If a term does not correspond to a GAAP concept or shouldn't be mapped, return it as "Unmapped".
           
+          CRITICAL RULE FOR SUB-ITEMS vs TOTALS:
+          Financial statements often break down line items (e.g., "Net sales: Products" and "Net sales: Services") and then provide a total (e.g., "Total net sales"). 
+          DO NOT map the individual sub-items (like "Net sales: Products") to a top-level GAAP term like "Revenue", because that would create duplicate "Revenue" rows and destroy the hierarchical breakdown.
+          Instead, map ONLY the "Total" row (e.g., "Total net sales") to the top-level GAAP term (e.g., "Revenue"), and leave the individual sub-items as "Unmapped" so their original descriptive names are preserved.
+          
           GAAP Taxonomy Reference:
           ${JSON.stringify(GAAP_TAXONOMY, null, 2)}
           
