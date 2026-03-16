@@ -1,10 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import { AnimatePresence } from "framer-motion";
 import UploadZone from "@/components/UploadZone";
 import ProcessingStatus from "@/components/ProcessingStatus";
 import ExtractionResults from "@/components/ExtractionResults";
 import MappingView from "@/components/MappingView";
+import ConfidenceHeatmap from "@/components/ConfidenceHeatmap";
+import ReviewPanel from "@/components/ReviewPanel";
+import { CellScore, ReviewAction, addAction, getActions } from "@/lib/audit-trail";
 
 export default function Home() {
   const [jobId, setJobId] = useState<string | null>(null);
@@ -15,11 +19,19 @@ export default function Home() {
   const [normalizedData, setNormalizedData] = useState<any | null>(null);
   const [isNormalizing, setIsNormalizing] = useState(false);
 
+  // Phase 3 State
+  const [auditedData, setAuditedData] = useState<any | null>(null);
+  const [isAuditing, setIsAuditing] = useState(false);
+  const [selectedCell, setSelectedCell] = useState<CellScore | null>(null);
+  const [auditActions, setAuditActions] = useState<ReviewAction[]>([]);
+  const [activeTableIndex, setActiveTableIndex] = useState(0);
+
   const handleUploadStart = (id: string) => {
     setJobId(id);
     setError(null);
     setResults(null);
     setNormalizedData(null);
+    setAuditedData(null);
   };
 
   const handleComplete = (data: any) => {
@@ -31,6 +43,7 @@ export default function Home() {
     setError(errMsg);
     setJobId(null);
     setIsNormalizing(false);
+    setIsAuditing(false);
   };
 
   const handleNormalize = async () => {
@@ -60,6 +73,55 @@ export default function Home() {
     }
   };
 
+  const handleAudit = async () => {
+    if (!normalizedData || !normalizedData.normalized_tables) return;
+
+    setIsAuditing(true);
+    setError(null);
+
+    try {
+      const res = await fetch("/api/audit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ normalized_tables: normalizedData.normalized_tables }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to audit data");
+      }
+
+      setAuditedData(data);
+    } catch (err: any) {
+      setError(err.message || "An error occurred during the confidence audit");
+    } finally {
+      setIsAuditing(false);
+    }
+  };
+
+  const handleReviewAction = (action: ReviewAction) => {
+    addAction(action);
+    setAuditActions(getActions());
+
+    if (action.type === "edit" && action.new_value) {
+      // Optimitically update the auditedData for demo purposes
+      // A more robust implementation would re-parse the HTML or send back to server
+      const newData = { ...auditedData };
+      const currentTable = newData.audited_tables[activeTableIndex];
+      // Note: We're not updating the HTML here for simplicity, just the state.
+      // In a real app, you'd replace the text in the DOM or the raw string
+      console.log(`Cell updated to: ${action.new_value}`);
+    }
+
+    setSelectedCell(null);
+  };
+
+  const handleMappingOverride = (tableIndex: number, originalTerm: string, newCanonical: string) => {
+     console.log(`Override term: ${originalTerm} -> ${newCanonical} in table ${tableIndex}`);
+     // Here you would trigger an API call to re-generate the HTML with the forced mapping
+  };
+
   return (
     <main className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto">
@@ -76,9 +138,7 @@ export default function Home() {
           <div className="max-w-2xl mx-auto mb-8 bg-red-50 border-l-4 border-red-400 p-4 rounded-md">
             <div className="flex">
               <div className="flex-shrink-0">
-                <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                </svg>
+                <AlertCircle className="h-5 w-5 text-red-400" />
               </div>
               <div className="ml-3">
                 <p className="text-sm text-red-700">{error}</p>
@@ -87,7 +147,7 @@ export default function Home() {
           </div>
         )}
 
-        {!jobId && !results && !isNormalizing && (
+        {!jobId && !results && !isNormalizing && !isAuditing && (
           <UploadZone onUploadStart={handleUploadStart} onError={handleError} />
         )}
 
@@ -99,7 +159,7 @@ export default function Home() {
           <div className="space-y-8">
             <div className="flex justify-between items-center">
               <button
-                onClick={() => { setResults(null); setNormalizedData(null); }}
+                onClick={() => { setResults(null); setNormalizedData(null); setAuditedData(null); }}
                 className="text-sm text-blue-600 hover:text-blue-500 font-medium"
               >
                 &larr; Upload another document
@@ -122,8 +182,46 @@ export default function Home() {
             )}
             
             {normalizedData && (
-              <MappingView normalizedTables={normalizedData.normalized_tables} />
+              <div className="space-y-8">
+                <div className="flex justify-end">
+                  {!auditedData && !isAuditing && (
+                    <button
+                      onClick={handleAudit}
+                      className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700"
+                    >
+                      Audit Confidence
+                    </button>
+                  )}
+                </div>
+                <MappingView 
+                  normalizedTables={normalizedData.normalized_tables} 
+                  onOverride={handleMappingOverride}
+                />
+              </div>
             )}
+
+            {isAuditing && (
+              <ProcessingStatus statusMessage="Auditing cell confidence..." />
+            )}
+
+            {auditedData && (
+               <ConfidenceHeatmap
+                 auditedTable={auditedData.audited_tables[activeTableIndex]}
+                 onCellClick={(cell) => setSelectedCell(cell)}
+               />
+            )}
+
+            <AnimatePresence>
+              {selectedCell && (
+                <ReviewPanel
+                  cellScore={selectedCell}
+                  tableIndex={activeTableIndex}
+                  pageNumber={auditedData?.audited_tables[activeTableIndex]?.page || 1}
+                  onAction={handleReviewAction}
+                  onClose={() => setSelectedCell(null)}
+                />
+              )}
+            </AnimatePresence>
           </div>
         )}
       </div>

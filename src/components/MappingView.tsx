@@ -116,6 +116,19 @@ export default function MappingView({ normalizedTables, onOverride }: MappingVie
                       {(mapping.confidence * 100).toFixed(0)}%
                     </span>
                     {getConfidenceIcon(mapping.confidence)}
+                    {mapping.confidence < 0.7 && onOverride && (
+                      <button 
+                        onClick={() => {
+                          const newTerm = prompt("Override canonical term for: " + mapping.original_term, mapping.canonical_term);
+                          if (newTerm && newTerm !== mapping.canonical_term) {
+                            onOverride(activeTab, mapping.original_term, newTerm);
+                          }
+                        }}
+                        className="ml-2 text-xs font-semibold text-indigo-600 hover:text-indigo-800 underline"
+                      >
+                        Edit
+                      </button>
+                    )}
                   </div>
                 </div>
                 <p className="text-xs text-gray-500 italic ml-1">

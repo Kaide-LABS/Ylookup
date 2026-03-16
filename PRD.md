@@ -5,7 +5,7 @@
 **Version:** 1.0
 **Date:** 2026-03-16
 **Author:** Claude (Architect) — for Gemini (Implementor)
-**Status:** Phase 2 Spec Ready
+**Status:** Phase 3 Spec Ready
 
 ---
 
@@ -28,7 +28,7 @@ PDF Upload -> Agent 1 (Triage + Extract) -> Agent 2 (Semantic Map) -> Agent 3 (C
 |-------|-------|------|----------------|
 | 1. Triage + Extract | Marker (LLM-hybrid w/ Gemini 2.5 Flash) | Classify doc type, extract tables via Marker's LLM-hybrid pipeline | 0.907 table accuracy in hybrid mode, native PDF vision, fast |
 | 2. Semantic Entity Mapper | Gemini 2.5 Pro | Normalize extracted fields to GAAP taxonomy ("Gross Rev" -> "Revenue") | Large context window holds full GAAP ontology + extracted data |
-| 3. Confidence Auditor | Claude Sonnet 4.6 (or GPT 5 mini) | Score confidence per cell, flag anomalies, verify cross-references | Reasoning-intensive, low latency |
+| 3. Confidence Auditor | GPT-5-mini (OpenAI) | Score confidence per cell, flag anomalies, verify cross-references | Reasoning-intensive, low latency, cost-effective |
 | Orchestrator | Next.js API routes (deterministic) | Route data between agents, manage pipeline state | No LLM needed — deterministic routing |
 
 ### Key Design Decision: Marker over raw Gemini Vision
@@ -53,7 +53,7 @@ Marker (`datalab-to/marker`) provides:
 | Styling | Tailwind CSS + Framer Motion | Same as Sentinel |
 | Agent 1 (Extract) | Marker Python backend (FastAPI) | Use Marker's built-in server as base, extend with TableConverter |
 | Agent 2 (Semantic) | `@google/genai` (Gemini 2.5 Pro) | Direct from Next.js API route |
-| Agent 3 (Confidence) | `@anthropic-ai/sdk` (Claude Sonnet 4.6) | Direct from Next.js API route |
+| Agent 3 (Confidence) | `openai` SDK (GPT-5-mini) | Direct from Next.js API route |
 | PDF handling | Marker handles internally | No need for unpdf |
 
 ### Architecture: Hybrid Stack
@@ -555,20 +555,449 @@ MappingView renders before/after
 
 ---
 
-## 7. Phase 3 Spec (Preview)
+## 7. Phase 3 Detailed Spec — Confidence Scoring + HITL Review
 
-**Goal:** Score every extracted cell's confidence, flag low-confidence for human review.
+**Goal:** After Phase 2 normalizes fields, Phase 3 sends the normalized tables to GPT-5-mini (OpenAI) to score every cell's confidence, flag anomalies, and provide a human-in-the-loop review interface where the user can Accept/Reject/Edit flagged cells with a full audit trail.
 
-Files to create/modify:
-- `src/app/api/audit/route.ts` — Claude Sonnet 4.6 confidence scoring route
-- `src/components/ConfidenceHeatmap.tsx` — Color-coded cell confidence
-- `src/components/ReviewPanel.tsx` — Accept/reject interface for flagged cells
+### 7.1 New Dependency
 
-Acceptance criteria:
-- Every cell has a confidence score (0-100%)
-- Cells below 95% threshold flagged in amber/red
-- Human can Accept/Reject/Edit flagged cells
-- Audit trail logged for every human decision
+Add to `package.json`:
+```json
+"openai": "^4.80.0"
+```
+
+### 7.2 Environment
+
+Add to `.env.local` and `docker-compose.yml` frontend env:
+```
+OPENAI_API_KEY=...   # Server-side only (no NEXT_PUBLIC_ prefix)
+```
+
+### 7.3 Files to Create
+
+#### `src/lib/openai-client.ts`
+
+```typescript
+/**
+ * Singleton OpenAI client for server-side use in API routes.
+ *
+ * Implementation:
+ *   import OpenAI from "openai";
+ *   export const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+ */
+```
+
+#### `src/app/api/audit/route.ts`
+
+```typescript
+/**
+ * POST /api/audit
+ *
+ * Accepts: Phase 2 normalized tables (the normalized_tables array)
+ * Returns: Confidence-scored cells with anomaly flags
+ *
+ * Request body:
+ * {
+ *   normalized_tables: Array<{
+ *     page: number,
+ *     table_index: number,
+ *     mappings: Array<{ original_term, canonical_term, ... }>,
+ *     raw_html: string,
+ *     normalized_html: string
+ *   }>
+ * }
+ *
+ * Implementation:
+ * 1. Import openai client from "@/lib/openai-client"
+ * 2. For each normalized table:
+ *    a) Use cheerio to parse normalized_html and extract a structured representation:
+ *       - Array of rows, each row is an array of { cell_text, row_index, col_index, is_header }
+ *    b) Call openai.chat.completions.create() with function calling for structured output:
+ *       - model: "gpt-5-mini"
+ *       - messages: [
+ *           { role: "system", content: "You are an expert financial auditor reviewing extracted data
+ *             from financial documents. Score each cell's extraction confidence and flag anomalies." },
+ *           { role: "user", content: promptWithTableData }
+ *         ]
+ *       - User message containing:
+ *         a) The structured table data (rows/cells)
+ *         b) The field mappings from Phase 2 (for context)
+ *         c) Instruction: "For each data cell (not headers), evaluate:
+ *            - confidence (0-100): How likely is this value correctly extracted?
+ *            - Consider: numeric format consistency, reasonable ranges for the field type,
+ *              cross-reference consistency (e.g., do subtotals add up?), OCR artifacts
+ *            - Flag cells below 95% confidence with a reason
+ *            - Flag any anomalies: values that seem unreasonable for their field type,
+ *              missing expected values, sign errors, unit mismatches"
+ *       - tools: [{
+ *           type: "function",
+ *           function: {
+ *             name: "score_cells",
+ *             description: "Score confidence for each cell in the table",
+ *             parameters: {
+ *             type: "object",
+ *             properties: {
+ *               cell_scores: {
+ *                 type: "array",
+ *                 items: {
+ *                   type: "object",
+ *                   properties: {
+ *                     row_index: { type: "number" },
+ *                     col_index: { type: "number" },
+ *                     cell_text: { type: "string" },
+ *                     confidence: { type: "number", description: "0-100" },
+ *                     flag: { type: "string", enum: ["none", "low_confidence", "anomaly", "format_issue"] },
+ *                     reason: { type: "string", description: "Why flagged, empty if none" }
+ *                   },
+ *                   required: ["row_index", "col_index", "cell_text", "confidence", "flag", "reason"]
+ *                 }
+ *               },
+ *               summary: {
+ *                 type: "object",
+ *                 properties: {
+ *                   total_cells: { type: "number" },
+ *                   flagged_count: { type: "number" },
+ *                   average_confidence: { type: "number" },
+ *                   cross_reference_issues: {
+ *                     type: "array",
+ *                     items: { type: "string" }
+ *                   }
+ *                 },
+ *                 required: ["total_cells", "flagged_count", "average_confidence", "cross_reference_issues"]
+ *               }
+ *             },
+ *             required: ["cell_scores", "summary"]
+ *           }}
+ *         }]
+ *       - tool_choice: { type: "function", function: { name: "score_cells" } }
+ *         // Forces the model to use the function, guaranteeing structured output
+ *
+ *    c) Extract the function call from the response:
+ *       - Access response.choices[0].message.tool_calls[0].function.arguments
+ *       - JSON.parse the arguments string to get { cell_scores, summary }
+ *
+ * 3. Build audited HTML using cheerio:
+ *    - For each cell in the normalized_html, add data attributes:
+ *      data-confidence="85" data-flag="low_confidence" data-reason="..."
+ *    - Add CSS classes based on confidence:
+ *      >= 95: no extra class (default green/clean)
+ *      80-94: "bg-amber-50 border-amber-300" (amber)
+ *      < 80: "bg-red-50 border-red-300" (red)
+ *
+ * API Route response:
+ * {
+ *   success: boolean,
+ *   audited_tables: [
+ *     {
+ *       page: number,
+ *       table_index: number,
+ *       cell_scores: CellScore[],
+ *       summary: { total_cells, flagged_count, average_confidence, cross_reference_issues },
+ *       audited_html: string,          // HTML with confidence classes/data-attrs baked in
+ *       normalized_html: string         // passthrough from Phase 2
+ *     }
+ *   ]
+ * }
+ *
+ * Error handling:
+ * - If OpenAI fails, return { success: false, error: "..." }
+ * - Timeout: 60s per table (financial tables can be large)
+ */
+```
+
+#### `src/components/ConfidenceHeatmap.tsx`
+
+```typescript
+/**
+ * Renders an audited table as a confidence heatmap.
+ *
+ * Props:
+ * {
+ *   auditedTable: {
+ *     audited_html: string,
+ *     cell_scores: CellScore[],
+ *     summary: { total_cells, flagged_count, average_confidence, cross_reference_issues }
+ *   },
+ *   onCellClick?: (cellScore: CellScore) => void   // Opens ReviewPanel for that cell
+ * }
+ *
+ * Layout:
+ * - Summary bar at top:
+ *   - Average confidence as a percentage badge (green/amber/red based on value)
+ *   - "X of Y cells flagged" count
+ *   - Cross-reference issues listed as warning chips
+ *
+ * - Table rendering:
+ *   DO NOT use dangerouslySetInnerHTML for the heatmap view.
+ *   Instead, build the table from cell_scores data programmatically:
+ *   - Render an HTML <table> using the cell_scores array
+ *   - Each cell colored by confidence:
+ *     >= 95: white/default background
+ *     80-94: bg-amber-50, amber left border
+ *     < 80: bg-red-50, red left border
+ *   - Flagged cells are clickable (cursor-pointer, subtle hover effect)
+ *   - Hovering a flagged cell shows a tooltip with the flag reason
+ *   - Clicking a flagged cell triggers onCellClick callback
+ *
+ * - Legend at bottom:
+ *   Green (>= 95%) | Amber (80-94%) | Red (< 80%)
+ *
+ * Animations:
+ * - Framer Motion: cells fade in with staggered animation (similar to MappingView)
+ * - Flagged cells have a subtle pulse on first render to draw attention
+ */
+```
+
+#### `src/components/ReviewPanel.tsx`
+
+```typescript
+/**
+ * Human-in-the-loop review interface for flagged cells.
+ *
+ * Props:
+ * {
+ *   cellScore: CellScore | null,       // Currently selected cell (null = panel closed)
+ *   onAction: (action: ReviewAction) => void,
+ *   onClose: () => void
+ * }
+ *
+ * Types:
+ * interface CellScore {
+ *   row_index: number;
+ *   col_index: number;
+ *   cell_text: string;
+ *   confidence: number;
+ *   flag: "none" | "low_confidence" | "anomaly" | "format_issue";
+ *   reason: string;
+ * }
+ *
+ * interface ReviewAction {
+ *   type: "accept" | "reject" | "edit";
+ *   cell: CellScore;
+ *   new_value?: string;           // Only for "edit" actions
+ *   reviewer_note?: string;       // Optional note from reviewer
+ *   timestamp: string;            // ISO timestamp
+ * }
+ *
+ * Layout:
+ * - Slide-in panel from the right (Framer Motion: animate x from 100% to 0)
+ * - Header: "Review Cell" + close button (X icon)
+ * - Cell info section:
+ *   - Current value displayed prominently
+ *   - Confidence score with colored badge
+ *   - Flag type with icon (AlertTriangle for anomaly, AlertCircle for low_confidence, etc.)
+ *   - Reason text from GPT
+ * - Action buttons:
+ *   - "Accept" (green) — confirms the value is correct despite low confidence
+ *   - "Reject" (red) — marks the value as incorrect (will need manual correction later)
+ *   - "Edit" (blue) — opens an inline text input to correct the value
+ * - Optional reviewer note text area (small, collapsible)
+ * - Each action creates a ReviewAction object with timestamp and passes to onAction
+ *
+ * Animations:
+ * - Panel slides in from right with Framer Motion AnimatePresence
+ * - Buttons have hover scale effect
+ */
+```
+
+#### `src/lib/audit-trail.ts`
+
+```typescript
+/**
+ * Client-side audit trail store.
+ * Stores all review actions in memory (for demo purposes).
+ * In production, this would persist to a database.
+ *
+ * Implementation:
+ * - Simple module-level array that accumulates ReviewAction objects
+ * - Export functions:
+ *   addAction(action: ReviewAction): void
+ *   getActions(): ReviewAction[]
+ *   getActionsForCell(row: number, col: number, tableIndex: number): ReviewAction[]
+ *   exportAuditTrail(): string  // Returns JSON string for download
+ *   clearAuditTrail(): void
+ *
+ * Each action stored with:
+ * {
+ *   ...ReviewAction,
+ *   table_index: number,        // Which table
+ *   page: number,               // Which page
+ * }
+ *
+ * This is intentionally simple — a plain array in a TS module.
+ * React state in page.tsx references this via getActions() to trigger re-renders.
+ */
+```
+
+### 7.4 Files to Modify
+
+#### `src/app/page.tsx`
+
+Extend to support a three-step flow:
+
+```typescript
+/**
+ * Updated state:
+ *   - Add: auditedData, isAuditing, selectedCell, auditActions
+ *   - After normalization completes, add an "Audit Confidence" button
+ *   - Clicking it: POST normalized_tables to /api/audit
+ *   - While auditing: show ProcessingStatus with "Auditing cell confidence..."
+ *   - When complete: show ConfidenceHeatmap below MappingView
+ *   - Clicking a flagged cell in heatmap: opens ReviewPanel
+ *   - ReviewPanel actions update auditActions state and audit-trail store
+ *
+ * Updated layout (after normalization):
+ *   <ExtractionResults data={results} />
+ *   <MappingView normalizedTables={normalizedData.normalized_tables} />
+ *   {!auditedData && !isAuditing && normalizedData && (
+ *     <button onClick={handleAudit}>Audit Confidence</button>
+ *   )}
+ *   {isAuditing && <ProcessingStatus statusMessage="Auditing cell confidence..." />}
+ *   {auditedData && (
+ *     <ConfidenceHeatmap
+ *       auditedTable={auditedData.audited_tables[activeTab]}
+ *       onCellClick={(cell) => setSelectedCell(cell)}
+ *     />
+ *   )}
+ *   <AnimatePresence>
+ *     {selectedCell && (
+ *       <ReviewPanel
+ *         cellScore={selectedCell}
+ *         onAction={handleReviewAction}
+ *         onClose={() => setSelectedCell(null)}
+ *       />
+ *     )}
+ *   </AnimatePresence>
+ *
+ * handleReviewAction:
+ *   - Adds action to audit-trail store via addAction()
+ *   - Updates auditActions state to trigger re-render
+ *   - If action.type === "edit", update the cell_text in auditedData
+ *   - Close the ReviewPanel
+ */
+```
+
+#### `src/components/MappingView.tsx`
+
+Wire the `onOverride` callback (previously a no-op prop from Phase 2):
+
+```typescript
+/**
+ * When a mapping has confidence < 0.7 (red dot), show a small "Edit" link next to it.
+ * Clicking "Edit" opens an inline text input replacing the canonical_term.
+ * On confirm, call onOverride(tableIndex, original_term, new_canonical).
+ * This is the HITL override that Gemini suggested in Phase 2 feedback.
+ *
+ * Keep this minimal — just the inline edit, not a full modal.
+ */
+```
+
+### 7.5 Data Flow
+
+```
+Phase 2 results (normalized_tables with mappings + normalized_html)
+  |
+  v
+User clicks "Audit Confidence"
+  |
+  v
+POST /api/audit { normalized_tables }
+  |
+  v
+Next.js API route:
+  - Parses each table with cheerio into structured cell data
+  - Sends to GPT-5-mini via function calling for structured confidence scoring
+  - GPT returns cell_scores + summary via function arguments
+  - Route builds audited_html with confidence CSS classes
+  |
+  v
+Response: { audited_tables: [...] }
+  |
+  v
+ConfidenceHeatmap renders color-coded table
+  |
+  v
+User clicks flagged cell -> ReviewPanel slides in
+  |
+  v
+User chooses Accept/Reject/Edit -> ReviewAction logged to audit trail
+```
+
+### 7.6 Structured Output Pattern (OpenAI SDK)
+
+The OpenAI SDK uses function calling for structured output. Key pattern:
+
+```typescript
+const response = await openai.chat.completions.create({
+  model: "gpt-5-mini",
+  messages: [
+    { role: "system", content: "You are an expert financial auditor..." },
+    { role: "user", content: promptWithTableData }
+  ],
+  tools: [{
+    type: "function",
+    function: {
+      name: "score_cells",
+      description: "Score confidence for each cell in the table",
+      parameters: { /* JSON Schema */ }
+    }
+  }],
+  tool_choice: { type: "function", function: { name: "score_cells" } }
+});
+
+// Extract structured output
+const toolCall = response.choices[0].message.tool_calls?.[0];
+const result = JSON.parse(toolCall.function.arguments);
+// result = { cell_scores: [...], summary: {...} }
+```
+
+`tool_choice: { type: "function", function: { name: "score_cells" } }` forces the model to always call the function, guaranteeing the response matches the schema.
+
+### 7.7 Project Structure After Phase 3
+
+```
+/Ylookup
+  /backend                         (unchanged)
+  /src
+    /app
+      page.tsx                      (MODIFIED — add audit flow + ReviewPanel)
+      layout.tsx
+      globals.css
+      /api
+        /normalize
+          route.ts
+        /audit
+          route.ts                  (NEW)
+    /components
+      UploadZone.tsx
+      ExtractionResults.tsx
+      ProcessingStatus.tsx
+      MappingView.tsx               (MODIFIED — wire onOverride inline edit)
+      ConfidenceHeatmap.tsx          (NEW)
+      ReviewPanel.tsx                (NEW)
+    /lib
+      gemini-client.ts
+      gaap-ontology.ts
+      openai-client.ts              (NEW)
+      audit-trail.ts                (NEW)
+  package.json                      (MODIFIED — add openai)
+  .env.local                        (MODIFIED — add OPENAI_API_KEY)
+```
+
+### 7.8 Acceptance Criteria
+
+- [ ] "Audit Confidence" button appears after normalization completes
+- [ ] GPT-5-mini scores every data cell with 0-100 confidence via function calling
+- [ ] ConfidenceHeatmap renders cells with color coding: green (>= 95%), amber (80-94%), red (< 80%)
+- [ ] Clicking a flagged cell opens ReviewPanel slide-in from right
+- [ ] ReviewPanel shows cell value, confidence, flag type, and GPT's reason
+- [ ] User can Accept, Reject, or Edit each flagged cell
+- [ ] Edit action allows inline text correction of cell value
+- [ ] Every review action logged to audit trail with timestamp
+- [ ] Summary bar shows average confidence, flagged count, and cross-reference issues
+- [ ] MappingView onOverride allows inline correction of low-confidence mappings (< 0.7)
+- [ ] Loading state shown during OpenAI call ("Auditing cell confidence...")
+- [ ] Error handling: OpenAI timeout/failure shows user-friendly error, prior results preserved
 
 ---
 
