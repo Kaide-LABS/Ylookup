@@ -7,10 +7,8 @@ services:
       - "8000:8000"
     environment:
       - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - MARKER_LLM_SERVICE=marker.services.gemini.GoogleGeminiService
     volumes:
       - ./backend:/app
-      - ~/.cache/huggingface:/root/.cache/huggingface
 
   frontend:
     build:

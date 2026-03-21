@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { AlertCircle, RefreshCw } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 import UploadZone from "@/components/UploadZone";
 import ProcessingStatus from "@/components/ProcessingStatus";
 import ExtractionResults from "@/components/ExtractionResults";
@@ -14,7 +14,7 @@ import ExportPanel from "@/components/ExportPanel";
 import { CellScore, ReviewAction, addAction, getActions, clearAuditTrail } from "@/lib/audit-trail";
 
 export default function Home() {
-  const [jobId, setJobId] = useState<string | null>(null);
+  const [isExtracting, setIsExtracting] = useState(false);
   const [results, setResults] = useState<any | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,10 +33,10 @@ export default function Home() {
   const currentPhase = auditedData ? "complete" :
                        (isAuditing || (normalizedData && !isNormalizing)) ? "audit" :
                        (isNormalizing || (results && !isNormalizing)) ? "normalize" :
-                       (jobId || isNormalizing) ? "extract" : "pending";
+                       isExtracting ? "extract" : "pending";
 
-  const handleUploadStart = (id: string) => {
-    setJobId(id);
+  const handleUploadStart = () => {
+    setIsExtracting(true);
     setError(null);
     setResults(null);
     setNormalizedData(null);
@@ -47,12 +47,12 @@ export default function Home() {
 
   const handleComplete = (data: any) => {
     setResults(data);
-    setJobId(null);
+    setIsExtracting(false);
   };
 
   const handleError = (errMsg: string) => {
     setError(errMsg);
-    setJobId(null);
+    setIsExtracting(false);
     setIsNormalizing(false);
     setIsAuditing(false);
   };
@@ -170,11 +170,16 @@ export default function Home() {
           </motion.div>
         )}
 
-        {/* Upload Zone */}
-        {!jobId && !results && !isNormalizing && !isAuditing && (
+        {/* Upload Zone — shown when not extracting and no results */}
+        {!isExtracting && !results && (
           <motion.div initial="hidden" animate="visible" variants={fadeUpVariant}>
-            <UploadZone onUploadStart={handleUploadStart} onError={handleError} />
+            <UploadZone onUploadStart={handleUploadStart} onComplete={handleComplete} onError={handleError} />
           </motion.div>
+        )}
+
+        {/* Extraction in progress */}
+        {isExtracting && (
+          <ProcessingStatus statusMessage="Extracting tables from PDF..." />
         )}
 
         {/* Floating Pipeline Header */}
@@ -189,7 +194,7 @@ export default function Home() {
               {results && (
                 <div className="flex justify-between items-center max-w-3xl mx-auto mt-2 px-2">
                   <button
-                    onClick={() => { setResults(null); setNormalizedData(null); setAuditedData(null); setJobId(null); }}
+                    onClick={() => { setResults(null); setNormalizedData(null); setAuditedData(null); }}
                     className="text-xs text-green-400 hover:text-green-300 font-semibold flex items-center gap-1"
                   >
                     &larr; New Document
@@ -215,11 +220,6 @@ export default function Home() {
             </motion.div>
           )}
         </AnimatePresence>
-
-        {/* Extraction Progress */}
-        {jobId && (
-          <ProcessingStatus jobId={jobId} onComplete={handleComplete} onError={handleError} />
-        )}
 
         {/* Results Container */}
         {results && (

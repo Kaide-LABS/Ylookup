@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { Loader2 } from "lucide-react";
 
 interface ProcessingStatusProps {
@@ -14,6 +14,12 @@ export default function ProcessingStatus({ jobId, statusMessage, onComplete, onE
   const [statusText, setStatusText] = useState(statusMessage || "Extracting tables...");
   const [elapsed, setElapsed] = useState(0);
   const startTime = useRef(Date.now());
+
+  // Store callbacks in refs to avoid re-triggering useEffect
+  const onCompleteRef = useRef(onComplete);
+  const onErrorRef = useRef(onError);
+  onCompleteRef.current = onComplete;
+  onErrorRef.current = onError;
 
   useEffect(() => {
     startTime.current = Date.now();
@@ -32,9 +38,11 @@ export default function ProcessingStatus({ jobId, statusMessage, onComplete, onE
   useEffect(() => {
     if (!jobId) return;
 
-    let intervalId: NodeJS.Timeout;
+    let stopped = false;
 
     const checkStatus = async () => {
+      if (stopped) return;
+
       try {
         const res = await fetch(`/api/status/${jobId}`);
         if (!res.ok) throw new Error("Failed to check status");
@@ -43,25 +51,41 @@ export default function ProcessingStatus({ jobId, statusMessage, onComplete, onE
 
         if (data.status === "completed") {
           setStatusText("Processing complete");
-          clearInterval(intervalId);
-          if (onComplete) onComplete(data);
+          stopped = true;
+          onCompleteRef.current?.(data);
         } else if (data.status === "failed") {
-          clearInterval(intervalId);
-          if (onError) onError(data.error || "Processing failed");
+          stopped = true;
+          onErrorRef.current?.(data.error || "Processing failed");
         } else {
           if (!statusMessage) setStatusText("Extracting tables...");
+          // Schedule next poll — setTimeout is more reliable than setInterval
+          // on throttled/old browsers
+          setTimeout(checkStatus, 2000);
         }
       } catch (err: any) {
-        clearInterval(intervalId);
-        if (onError) onError(err.message || "Error checking status");
+        // On network error, retry instead of giving up
+        if (!stopped) {
+          setTimeout(checkStatus, 3000);
+        }
       }
     };
 
-    intervalId = setInterval(checkStatus, 2000);
+    // Start polling
     checkStatus();
 
-    return () => clearInterval(intervalId);
-  }, [jobId, onComplete, onError, statusMessage]);
+    // Also re-check when tab becomes visible (fixes browser throttling)
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible" && !stopped) {
+        checkStatus();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      stopped = true;
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [jobId, statusMessage]);
 
   return (
     <div className="w-full max-w-2xl mx-auto mt-10 text-center p-10 bg-yl-card rounded-xl shadow-sm border border-yl-border">

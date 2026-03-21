@@ -88,7 +88,7 @@ export async function POST(request: Request) {
         const $ = cheerio.load(table.audited_html);
         const headers: string[] = [];
         
-        $("th").each((_, el) => headers.push($(el).text().trim()));
+        $("th").each((_, el) => { headers.push($(el).text().trim()); });
 
         $("tr").each((rowIndex, tr) => {
           if ($(tr).find("th").length > 0) return;

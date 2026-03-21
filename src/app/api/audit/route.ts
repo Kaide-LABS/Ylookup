@@ -112,7 +112,7 @@ export async function POST(request: Request) {
         let result = { flagged_cells: [], summary: { cross_reference_issues: [] } };
         if (toolCall) {
             try {
-                result = JSON.parse(toolCall.function.arguments);
+                result = JSON.parse((toolCall as any).function.arguments);
             } catch (e) {
                 console.error("Failed to parse OpenAI response", e);
             }

@@ -5,11 +5,12 @@ import { motion } from "framer-motion";
 import { UploadCloud, FileType } from "lucide-react";
 
 interface UploadZoneProps {
-  onUploadStart: (jobId: string) => void;
+  onUploadStart: () => void;
+  onComplete: (data: any) => void;
   onError: (error: string) => void;
 }
 
-export default function UploadZone({ onUploadStart, onError }: UploadZoneProps) {
+export default function UploadZone({ onUploadStart, onComplete, onError }: UploadZoneProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -47,6 +48,7 @@ export default function UploadZone({ onUploadStart, onError }: UploadZoneProps) 
   const handleUpload = async () => {
     if (!file) return;
     setIsUploading(true);
+    onUploadStart();
 
     const formData = new FormData();
     formData.append("file", file);
@@ -62,13 +64,15 @@ export default function UploadZone({ onUploadStart, onError }: UploadZoneProps) 
       }
 
       const data = await response.json();
-      if (data.job_id) {
-        onUploadStart(data.job_id);
+      if (data.status === "completed") {
+        onComplete(data);
+      } else if (data.status === "failed") {
+        throw new Error(data.error || "Extraction failed");
       } else {
-        throw new Error("No job ID received");
+        throw new Error("Unexpected response");
       }
     } catch (err: any) {
-      onError(err.message || "An error occurred during upload");
+      onError(err.message || "An error occurred during extraction");
     } finally {
       setIsUploading(false);
     }

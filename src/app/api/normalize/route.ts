@@ -9,62 +9,64 @@ export async function POST(request: Request) {
     const body = await request.json();
     const tables = body.tables || [];
 
-    const normalized_tables = await Promise.all(
-      tables.map(async (table: any) => {
-        if (!table.raw_html) return { ...table, mappings: [], normalized_html: "" };
+    // Step 1: Extract ALL unique terms from ALL tables (local, instant)
+    const allTerms = new Set<string>();
+    const parsedTables = tables.map((table: any) => {
+      if (!table.raw_html) return { table, $: null, terms: [] };
+      const $ = cheerio.load(table.raw_html);
+      const terms: string[] = [];
 
-        // 1. Parse HTML securely with cheerio to extract unique terms
-        const $ = cheerio.load(table.raw_html);
-        const termsToMap = new Set<string>();
+      $("th").each((_, el) => {
+        const text = $(el).text().trim();
+        if (text) { allTerms.add(text); terms.push(text); }
+      });
 
-        // Extract text from table headers and the first cell of each row (typical row labels)
-        $("th").each((_, el) => {
-          const text = $(el).text().trim();
-          if (text) termsToMap.add(text);
-        });
-        
-        $("tr").each((_, row) => {
-          const firstCell = $(row).find("td").first();
-          if (firstCell.length) {
-            const text = firstCell.text().trim();
-            if (text) termsToMap.add(text);
-          }
-        });
-
-        const uniqueTerms = Array.from(termsToMap);
-        
-        if (uniqueTerms.length === 0) {
-          return { ...table, mappings: [], normalized_html: table.raw_html };
+      $("tr").each((_, row) => {
+        const firstCell = $(row).find("td").first();
+        if (firstCell.length) {
+          const text = firstCell.text().trim();
+          if (text) { allTerms.add(text); terms.push(text); }
         }
+      });
 
-        // 2. Call Gemini for mapping
-        const prompt = `
-          You are an expert financial accountant. I will give you a list of extracted terms from a financial document.
-          Your task is to map each term to its closest equivalent in the standard GAAP Taxonomy provided.
-          If a term does not correspond to a GAAP concept or shouldn't be mapped, return it as "Unmapped".
-          
-          CRITICAL RULE FOR SUB-ITEMS vs TOTALS:
-          Financial statements often break down line items (e.g., "Net sales: Products" and "Net sales: Services") and then provide a total (e.g., "Total net sales"). 
-          DO NOT map individual sub-items (like "Net sales: Products") to a generic top-level GAAP term like "Revenue" by itself, because that would create duplicate "Revenue" rows and destroy the hierarchical breakdown.
-          INSTEAD, you must standardize the base GAAP term while preserving the specific sub-category descriptor. 
-          For example:
-          - "Net sales: Products" should map to "Revenue: Products" (or "Revenue - Products").
-          - "Net sales: Services" should map to "Revenue: Services" (or "Revenue - Services").
-          - "Total net sales" should map to the top-level GAAP term "Revenue".
-          - "Cost of sales: Products" should map to "Cost of Goods Sold: Products".
-          - "Earnings per share: Basic" should map to "Earnings Per Share: Basic".
-          
-          This ensures the terminology is fully standardized to GAAP (Revenue, COGS, EPS, etc.) but the granular breakdown that the founders rely on is perfectly preserved without messy inconsistencies.
-          
-          GAAP Taxonomy Reference:
-          ${JSON.stringify(GAAP_TAXONOMY, null, 2)}
-          
-          Terms to map:
-          ${JSON.stringify(uniqueTerms)}
-        `;
+      return { table, $, terms };
+    });
 
+    const uniqueTerms = Array.from(allTerms);
+
+    if (uniqueTerms.length === 0) {
+      return NextResponse.json({
+        success: true,
+        normalized_tables: tables.map((t: any) => ({ ...t, mappings: [], normalized_html: t.raw_html || "" })),
+      });
+    }
+
+    // Step 2: ONE Gemini call to map ALL terms at once
+    const prompt = `
+      You are an expert financial accountant. Map each term below to its closest GAAP equivalent.
+      If a term does not correspond to a GAAP concept, return canonical_term as "Unmapped".
+
+      CRITICAL RULE FOR SUB-ITEMS vs TOTALS:
+      - "Net sales: Products" → "Revenue: Products" (preserve sub-category)
+      - "Net sales: Services" → "Revenue: Services"
+      - "Total net sales" → "Revenue" (top-level)
+      - "Cost of sales: Products" → "Cost of Goods Sold: Products"
+      - "Earnings per share: Basic" → "Earnings Per Share: Basic"
+      Standardize to GAAP but preserve granular breakdowns.
+
+      GAAP Taxonomy:
+      ${JSON.stringify(GAAP_TAXONOMY, null, 2)}
+
+      Terms to map (${uniqueTerms.length} total):
+      ${JSON.stringify(uniqueTerms)}
+    `;
+
+    let mappings: any[] = [];
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
         const response = await gemini.models.generateContent({
-          model: "gemini-3.1-pro-preview",
+          model: "gemini-3-flash-preview",
           contents: prompt,
           config: {
             responseMimeType: "application/json",
@@ -88,34 +90,56 @@ export async function POST(request: Request) {
               },
               required: ["mappings"],
             },
-            temperature: 0.1, // Keep it deterministic
+            temperature: 0.1,
           },
         });
 
-        const mappingResultText = response.text || "{}";
-        const resultJson = JSON.parse(mappingResultText);
-        const mappings = resultJson.mappings || [];
-
-        // Filter out "Unmapped" results
-        const validMappings = mappings.filter((m: any) => m.canonical_term !== "Unmapped" && m.canonical_term !== m.original_term);
-
-        // 3. Create normalized HTML securely using Cheerio
-        validMappings.forEach((mapping: any) => {
-          $("th, td").each((_, el) => {
-            if ($(el).text().trim() === mapping.original_term) {
-              $(el).text(mapping.canonical_term);
-              $(el).addClass("bg-green-50 text-green-900 font-medium"); // Optional: highlight changed cells
-            }
+        const resultJson = JSON.parse(response.text || "{}");
+        mappings = resultJson.mappings || [];
+        break;
+      } catch (err: any) {
+        console.warn(`Normalization attempt ${attempt + 1} failed: ${err.message}`);
+        if (attempt === 2) {
+          console.error("All normalization attempts failed, returning tables unmapped");
+          return NextResponse.json({
+            success: true,
+            normalized_tables: tables.map((t: any) => ({ ...t, mappings: [], normalized_html: t.raw_html || "" })),
           });
-        });
+        }
+        await new Promise(r => setTimeout(r, 3000));
+      }
+    }
 
-        return {
-          ...table,
-          mappings: validMappings,
-          normalized_html: $.html(),
-        };
-      })
+    // Build a lookup map: original_term -> mapping
+    const validMappings = mappings.filter(
+      (m: any) => m.canonical_term !== "Unmapped" && m.canonical_term !== m.original_term
     );
+    const mappingLookup = new Map(validMappings.map((m: any) => [m.original_term, m]));
+
+    // Step 3: Apply mappings to each table locally (instant, no API calls)
+    const normalized_tables = parsedTables.map(({ table, $, terms }: any) => {
+      if (!$ || terms.length === 0) {
+        return { ...table, mappings: [], normalized_html: table.raw_html || "" };
+      }
+
+      const tableMappings: any[] = [];
+
+      $("th, td").each((_: any, el: any) => {
+        const text = $(el).text().trim();
+        const mapping = mappingLookup.get(text);
+        if (mapping) {
+          $(el).text(mapping.canonical_term);
+          $(el).addClass("bg-green-50 text-green-900 font-medium");
+          tableMappings.push(mapping);
+        }
+      });
+
+      return {
+        ...table,
+        mappings: tableMappings,
+        normalized_html: $.html(),
+      };
+    });
 
     return NextResponse.json({ success: true, normalized_tables });
   } catch (error: any) {
